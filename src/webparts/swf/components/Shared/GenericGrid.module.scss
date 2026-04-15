@@ -14,6 +14,9 @@
         flex-shrink: 0;
         display: flex;
         align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap; // Allow wrapping on small screens
+        gap: 12px;
 
         .commandBar {
             background: transparent;
@@ -39,6 +42,35 @@
                 :global(.ms-Button-icon) {
                     color: $primary-color;
                     font-size: 16px;
+                }
+            }
+        }
+
+        .searchContainer {
+            min-width: 250px;
+            max-width: 300px;
+            flex-shrink: 0;
+            padding: 4px 0;
+
+            .searchBox {
+                border: 1px solid #d0d3dc;
+                border-radius: 6px;
+                background: #f8f9fc;
+                transition: all 0.2s ease;
+
+                :global(.ms-SearchBox-field) {
+                    font-size: 14px;
+                }
+
+                &:hover {
+                    border-color: #a1a5b3;
+                    background: #ffffff;
+                }
+
+                &:global(.is-active) {
+                    border-color: $primary-color;
+                    background: #ffffff;
+                    box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.1);
                 }
             }
         }
@@ -185,9 +217,111 @@
         }
     }
 
+    // ── Pagination Bar ────────────────────────────────────────────────────────
+    .paginationBar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 24px;
+        background: #ffffff;
+        border-top: 1px solid #e0e4ea;
+        box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.04);
+        flex-shrink: 0;
+        min-height: 52px;
+
+        .pageBtn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 7px 20px;
+            border: 1px solid #d0d3dc;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            background: #f8f9fc;
+            color: #2c3347;
+            transition: all 0.18s ease;
+            width: 130px;
+            flex-shrink: 0;
+            white-space: nowrap;
+            line-height: 1;
+
+            &:hover:not(:disabled) {
+                background: $primary-color;
+                border-color: $primary-color;
+                color: #ffffff;
+                box-shadow: 0 2px 8px rgba(0, 120, 212, 0.25);
+                transform: translateY(-1px);
+            }
+
+            &:disabled {
+                opacity: 0.35;
+                cursor: not-allowed;
+                transform: none;
+                box-shadow: none;
+            }
+        }
+
+        .pageInfo {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            flex: 1;
+            text-align: center;
+            padding: 0 16px;
+            gap: 2px;
+
+            .pageCurrent {
+                font-size: 13px;
+                color: #333;
+                line-height: 1.4;
+
+                strong {
+                    color: $primary-color;
+                    font-weight: 700;
+                }
+            }
+
+            .pageTotal {
+                font-size: 11px;
+                color: #999;
+                line-height: 1.2;
+            }
+
+            .pageLoading {
+                font-size: 13px;
+                color: #999;
+                font-style: italic;
+                animation: paginationPulse 1.2s ease-in-out infinite;
+            }
+        }
+    }
+
+    @keyframes paginationPulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+    }
+
     // ── Responsive ───────────────────────────────────────────────────────────
     @media (max-width: 768px) {
-        .gridHeader { padding: 4px 0; }
+        .gridHeader { 
+            padding: 8px;
+            flex-direction: column;
+            align-items: stretch;
+
+            .commandBar {
+                width: 100%;
+            }
+
+            .searchContainer {
+                width: 100%;
+                max-width: none;
+                margin-top: 8px;
+            }
+        }
         .listContainer :global(.ms-DetailsHeader-cell) { font-size: 11px; }
         .listContainer :global(.ms-DetailsRow-cell) { font-size: 12px; padding: 8px 8px; }
     }

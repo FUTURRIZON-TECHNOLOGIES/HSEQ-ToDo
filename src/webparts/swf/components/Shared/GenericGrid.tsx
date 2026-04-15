@@ -8,7 +8,8 @@ import {
     ICommandBarItemProps,
     ShimmeredDetailsList,
     ConstrainMode,
-    Icon
+    Icon,
+    SearchBox
 } from '@fluentui/react';
 import styles from './GenericGrid.module.scss';
 
@@ -23,13 +24,27 @@ export interface IGenericGridProps {
     onExportZip?: (items: any[]) => void;
     onRefresh?: () => void;
     onEdit?: (item: any) => void;
+    onSearch?: (term: string) => void;
     loading?: boolean;
     title?: string;
+    currentPage?: number;
+    totalPages?: number;
+    totalCount?: number;
+    pageSize?: number;
+    onPageChange?: (page: number) => void;
+    clientSidePagination?: boolean;
+
+    // Sorting
+    sortField?: string;
+    isAscending?: boolean;
+    onSort?: (field: string, isAsc: boolean) => void;
 }
 
 const GenericGrid: React.FC<IGenericGridProps> = (props) => {
     const [filteredItems, setFilteredItems] = React.useState<any[]>(props.items);
     const [selectionCount, setSelectionCount] = React.useState(0);
+    const [searchQuery, setSearchQuery] = React.useState('');
+    const listContainerRef = React.useRef<HTMLDivElement>(null);
 
     const [selection] = React.useState<Selection>(
         new Selection({
@@ -39,9 +54,57 @@ const GenericGrid: React.FC<IGenericGridProps> = (props) => {
         })
     );
 
+    const onColumnClick = (ev: React.MouseEvent<HTMLElement>, column: IColumn): void => {
+        if (!props.onSort) return;
+        const isAscending = props.sortField === column.key ? !props.isAscending : true;
+        props.onSort(column.key, isAscending);
+    };
+
+    // Debounce search
+    const onSearchRef = React.useRef(props.onSearch);
+    React.useEffect(() => {
+        onSearchRef.current = props.onSearch;
+    }, [props.onSearch]);
+
+    React.useEffect(() => {
+        const handler = setTimeout(() => {
+            onSearchRef.current?.(searchQuery);
+        }, 500);
+
+        return () => clearTimeout(handler);
+    }, [searchQuery]);
+
     React.useEffect(() => {
         setFilteredItems(props.items);
+        // Clear stale selection and scroll to top on every data change
+        selection.setAllSelected(false);
+        if (listContainerRef.current) {
+            listContainerRef.current.scrollTop = 0;
+        }
     }, [props.items]);
+
+    // Clear selection on page change to prevent stale selection across pages
+    React.useEffect(() => {
+        selection.setAllSelected(false);
+        if (listContainerRef.current) {
+            listContainerRef.current.scrollTop = 0;
+        }
+    }, [props.currentPage]);
+
+    const pagedItems = React.useMemo(() => {
+        if (props.clientSidePagination && props.pageSize) {
+            const start = ((props.currentPage ?? 1) - 1) * props.pageSize;
+            const end = (props.currentPage ?? 1) * props.pageSize;
+            return filteredItems.slice(start, end);
+        }
+        return filteredItems;
+    }, [filteredItems, props.currentPage, props.pageSize, props.clientSidePagination]);
+
+    // Update selection object whenever the displayed items change
+    // This is CRITICAL for Selection to map indices correctly to items
+    React.useEffect(() => {
+        selection.setItems(pagedItems, true);
+    }, [pagedItems]);
 
     const getExportTarget = (): any[] =>
         selectionCount > 0 ? selection.getSelection() : filteredItems;
@@ -112,11 +175,38 @@ const GenericGrid: React.FC<IGenericGridProps> = (props) => {
         }
     ];
 
-    // Pass columns through as-is; borders are applied via SCSS on .ms-DetailsRow-cell
+    const farItems: ICommandBarItemProps[] = [
+        {
+            key: 'search',
+            onRender: () => (
+                <div className={styles.searchContainer}>
+                    <SearchBox
+                        placeholder="Search tasks..."
+                        className={styles.searchBox}
+                        value={searchQuery}
+                        onChange={(_, newValue) => setSearchQuery(newValue || '')}
+                        onClear={() => setSearchQuery('')}
+                        underlined={false}
+                    />
+                </div>
+            )
+        }
+    ];
+
+    // Enhance columns with sorting capability and indicators
     const styledColumns: IColumn[] = props.columns.map(col => ({
         ...col,
-        isResizable: true
+        isResizable: true,
+        isSorted: props.sortField === col.key,
+        isSortedDescending: props.sortField === col.key ? !props.isAscending : false,
+        onColumnClick: onColumnClick
     }));
+    
+    // Clear selection when displayed pagedItems change (pagination or sorting)
+    React.useEffect(() => {
+        selection.setAllSelected(false);
+        if (listContainerRef.current) listContainerRef.current.scrollTop = 0;
+    }, [pagedItems, props.currentPage, props.sortField, props.isAscending]);
 
     const selectionLabel =
         selectionCount > 0
@@ -129,6 +219,7 @@ const GenericGrid: React.FC<IGenericGridProps> = (props) => {
             <div className={styles.gridHeader}>
                 <CommandBar
                     items={commandItems}
+                    farItems={farItems}
                     className={styles.commandBar}
                     styles={{ root: { padding: '0 8px' } }}
                 />
@@ -152,9 +243,9 @@ const GenericGrid: React.FC<IGenericGridProps> = (props) => {
             )}
 
             {/* ── Data Grid ── */}
-            <div className={styles.listContainer}>
+            <div className={styles.listContainer} ref={listContainerRef}>
                 <ShimmeredDetailsList
-                    items={filteredItems}
+                    items={pagedItems}
                     columns={styledColumns}
                     selection={selection}
                     selectionMode={SelectionMode.multiple}
@@ -163,6 +254,7 @@ const GenericGrid: React.FC<IGenericGridProps> = (props) => {
                     enableShimmer={props.loading}
                     onItemInvoked={props.onEdit}
                     selectionPreservedOnEmptyClick={false}
+                    onShouldVirtualize={() => false}
                     className={styles.detailsList}
                 />
             </div>
@@ -176,6 +268,44 @@ const GenericGrid: React.FC<IGenericGridProps> = (props) => {
                     </span>
                 )}
             </div>
+
+            {/* ── Pagination Bar ── */}
+            {props.onPageChange && (
+                <div className={styles.paginationBar}>
+                    <button
+                        className={styles.pageBtn}
+                        disabled={props.loading || (props.currentPage ?? 1) <= 1}
+                        onClick={() => props.onPageChange!((props.currentPage ?? 1) - 1)}
+                        title="Previous page"
+                    >
+                        ◀ Previous
+                    </button>
+
+                    <div className={styles.pageInfo}>
+                        {props.loading ? (
+                            <span className={styles.pageLoading}>Loading…</span>
+                        ) : (
+                            <>
+                                <span className={styles.pageCurrent}>
+                                    Page <strong>{props.currentPage ?? 1}</strong> of <strong>{props.totalPages ?? 1}</strong>
+                                </span>
+                                {props.totalCount !== undefined && (
+                                    <span className={styles.pageTotal}>&nbsp;· {props.totalCount.toLocaleString()} items total</span>
+                                )}
+                            </>
+                        )}
+                    </div>
+
+                    <button
+                        className={styles.pageBtn}
+                        disabled={props.loading || (props.currentPage ?? 1) >= (props.totalPages ?? 1)}
+                        onClick={() => props.onPageChange!((props.currentPage ?? 1) + 1)}
+                        title="Next page"
+                    >
+                        Next ▶
+                    </button>
+                </div>
+            )}
         </div>
     );
 };

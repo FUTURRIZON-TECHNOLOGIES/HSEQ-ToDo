@@ -97,6 +97,322 @@ export class SPService {
         }));
     }
 
+    public async getToDoTotalCount(searchQuery?: string): Promise<number> {
+        await this.init();
+        try {
+            const names = {
+                Subject:   this.getInternalName("Subject",    "Title"),
+                Regarding: this.getInternalName("Regarding",  "Regarding"),
+                TaskOwner: this.getInternalName("Task Owner", "TaskOwner"),
+            };
+
+            let filter = "";
+            if (searchQuery) {
+                filter = `(substringof('${searchQuery}', ${names.Subject}) or substringof('${searchQuery}', ${names.Regarding}) or substringof('${searchQuery}', ${names.TaskOwner}/Title))`;
+                if (!isNaN(Number(searchQuery))) {
+                    filter = `(Id eq ${searchQuery} or ${filter})`;
+                }
+            }
+
+            // Using select("Id").top(5000) is more reliable than list-level ItemCount
+            // which can be cached or exclude certain items.
+            let query = this._sp.web.lists.getByTitle(this._listTitle).items.select("Id").top(5000);
+            if (filter) query = query.filter(filter);
+            
+            const items = await query();
+            return items.length;
+        } catch (e) {
+            console.warn("[SPService] Could not fetch total count:", e);
+            return 0;
+        }
+    }
+
+    /** Fetches a single page of items using server-side skip/top with optional search and sort */
+    public async getToDoItemsPaged(
+        page: number, 
+        pageSize: number, 
+        searchQuery?: string,
+        sortField: string = "Id",
+        isAscending: boolean = true
+    ): Promise<IToDoItem[]> {
+        await this.init();
+
+        const fieldInternalNames = Array.from(this._fieldMap.values());
+
+        const names = {
+            Subject:          this.getInternalName("Subject",          "Title"),
+            TaskOwner:        this.getInternalName("Task Owner",       "TaskOwner"),
+            AssigneeInternal: this.getInternalName("Assigne Internal", "AssigneInternal"),
+            AssigneeExternal: this.getInternalName("Assigne External", "AssigneExternal"),
+            Status:           this.getInternalName("Status",           "Status"),
+            Category:         this.getInternalName("Category",         "Category"),
+            Classification:   this.getInternalName("Classification",   "Classification"),
+            Priority:         this.getInternalName("Priority",         "Priority"),
+            CompletedPercent: this.getInternalName("Completed %",      "CompletedPercent"),
+            StartDate:        this.getInternalName("Start Date",       "StartDate"),
+            CompletionDate:   this.getInternalName("Completion Date",  "CompletionDate"),
+            CreatedByUser:    this.getInternalName("Created By User",  "CreatedByUser"),
+            UpdatedByUser:    this.getInternalName("Updated By User",  "UpdatedByUser"),
+            CreatedOn:        this.getInternalName("Created On",       "CreatedOn"),
+            UpdatedOn:        this.getInternalName("Updated On",       "UpdatedOn"),
+            Description:      this.getInternalName("Description",      "Description"),
+            Regarding:        this.getInternalName("Regarding",        "Regarding"),
+            DueDate:          this.getInternalName("Due Date",         "DueDate"),
+            Resolution:       this.getInternalName("Resolution",       "Resolution"),
+            EmailNotifications: this.getInternalName("Email Notification", "EmailNotifications"),
+        };
+
+        const selects = ["*", "Id", "Title", "Author/Title", "Author/EMail", "Editor/Title", "Editor/EMail", "Created", "Modified", "Attachments", `${names.Status}/Title`, `${names.Status}/Name`, `${names.Category}/Title`, `${names.Category}/Name`, `${names.Classification}/Title`, `${names.Classification}/Name`, `${names.Priority}/Title`, `${names.Priority}/Name`];
+        const expands = ["Author", "Editor", "AttachmentFiles", names.Status, names.Category, names.Classification, names.Priority];
+
+        const safelyAddSelect = (internalName: string): void => {
+            if (fieldInternalNames.indexOf(internalName) < 0) return;
+            const fieldType = this._fieldTypeMap.get(internalName) || "";
+            if (fieldType === "User" || fieldType === "UserMulti") {
+                selects.push(`${internalName}/Id`, `${internalName}/Title`, `${internalName}/EMail`);
+                expands.push(internalName);
+            } else if (fieldType === "Lookup" || fieldType === "LookupMulti") {
+                selects.push(`${internalName}/Id`, `${internalName}/Title`);
+                expands.push(internalName);
+            } else {
+                selects.push(internalName);
+            }
+        };
+
+        safelyAddSelect(names.Subject);
+        safelyAddSelect(names.Status);
+        safelyAddSelect(names.Category);
+        safelyAddSelect(names.Classification);
+        safelyAddSelect(names.Priority);
+        safelyAddSelect(names.TaskOwner);
+        safelyAddSelect(names.AssigneeInternal);
+        safelyAddSelect(names.AssigneeExternal);
+        safelyAddSelect(names.StartDate);
+        safelyAddSelect(names.CompletionDate);
+        safelyAddSelect(names.CompletedPercent);
+        safelyAddSelect(names.CreatedByUser);
+        safelyAddSelect(names.UpdatedByUser);
+        safelyAddSelect(names.CreatedOn);
+        safelyAddSelect(names.UpdatedOn);
+        safelyAddSelect(names.Description);
+        safelyAddSelect(names.Regarding);
+        safelyAddSelect(names.DueDate);
+        safelyAddSelect(names.Resolution);
+        safelyAddSelect(names.EmailNotifications);
+
+        const skipCount = (page - 1) * pageSize;
+
+        try {
+            // Mapping sort field to internal name if needed
+            let realSortField = sortField;
+            if (sortField === "TaskOwner") realSortField = `${names.TaskOwner}/Title`;
+            else if (sortField === "Subject")  realSortField = names.Subject;
+            else if (sortField === "Regarding") realSortField = names.Regarding;
+
+            let baseQuery = this._sp.web.lists
+                .getByTitle(this._listTitle).items
+                .select(...selects)
+                .expand(...expands)
+                .top(pageSize)
+                .orderBy(realSortField, isAscending);
+
+            if (searchQuery) {
+                let filter = `(substringof('${searchQuery}', ${names.Subject}) or substringof('${searchQuery}', ${names.Regarding}) or substringof('${searchQuery}', ${names.TaskOwner}/Title))`;
+                
+                if (!isNaN(Number(searchQuery))) {
+                    filter = `(Id eq ${searchQuery} or ${filter})`;
+                }
+                baseQuery = baseQuery.filter(filter);
+            }
+
+            const rawItems = await (skipCount > 0
+                ? baseQuery.skip(skipCount)()
+                : baseQuery());
+
+            return rawItems.map(item => {
+                const getLookup = (n: string): { Id: number; Title: string; Name?: string } | undefined => {
+                    const v = item[n];
+                    if (v === null || v === undefined || v === "") return undefined;
+                    if (typeof v === "object") return { Id: v.Id || 0, Title: v.Title || v.Name || "", Name: v.Name };
+                    if (typeof v === "string") return { Id: 0, Title: v };
+                    return undefined;
+                };
+                const getPerson = (n: string): { Id: number; Title: string; EMail: string } | undefined => {
+                    const v = item[n];
+                    if (!v || typeof v !== "object") return undefined;
+                    return { Id: v.Id || 0, Title: v.Title || "", EMail: v.EMail || "" };
+                };
+                return {
+                    Id: item.Id,
+                    Title: item[names.Subject] || item.Title || "",
+                    Description: item[names.Description],
+                    Status:         getLookup(names.Status),
+                    Category:       getLookup(names.Category),
+                    Classification: getLookup(names.Classification),
+                    Priority:       getLookup(names.Priority),
+                    TaskOwner:        getPerson(names.TaskOwner),
+                    AssigneeInternal: getPerson(names.AssigneeInternal),
+                    AssigneeExternal: getPerson(names.AssigneeExternal),
+                    Regarding:        item[names.Regarding],
+                    DueDate:          item[names.DueDate],
+                    StartDate:        item[names.StartDate],
+                    CompletionDate:   item[names.CompletionDate],
+                    CompletedPercent: item[names.CompletedPercent],
+                    EmailNotifications: item[names.EmailNotifications],
+                    Author:  getPerson(names.CreatedByUser)  || item.Author,
+                    Editor:  getPerson(names.UpdatedByUser)  || item.Editor,
+                    Created: item[names.CreatedOn]  || item.Created,
+                    Modified: item[names.UpdatedOn] || item.Modified,
+                    Resolution: item[names.Resolution],
+                    AttachmentFiles: item.AttachmentFiles || [],
+                };
+            });
+        } catch (error) {
+            console.error(`[SPService] Paged query failed:`, error);
+            this._lastError = `Paged fetch failed: ${error.message || JSON.stringify(error)}`;
+            return [];
+        }
+    }
+
+    /** Fetches all matching items for export purposes (no pagination) */
+    public async getToDoItemsFiltered(
+        searchQuery?: string,
+        sortField: string = "Id",
+        isAscending: boolean = true
+    ): Promise<IToDoItem[]> {
+        await this.init();
+
+        const fieldInternalNames = Array.from(this._fieldMap.values());
+
+        const names = {
+            Subject:          this.getInternalName("Subject",          "Title"),
+            TaskOwner:        this.getInternalName("Task Owner",       "TaskOwner"),
+            AssigneeInternal: this.getInternalName("Assigne Internal", "AssigneInternal"),
+            AssigneeExternal: this.getInternalName("Assigne External", "AssigneExternal"),
+            Status:           this.getInternalName("Status",           "Status"),
+            Category:         this.getInternalName("Category",         "Category"),
+            Classification:   this.getInternalName("Classification",   "Classification"),
+            Priority:         this.getInternalName("Priority",         "Priority"),
+            CompletedPercent: this.getInternalName("Completed %",      "CompletedPercent"),
+            StartDate:        this.getInternalName("Start Date",       "StartDate"),
+            CompletionDate:   this.getInternalName("Completion Date",  "CompletionDate"),
+            CreatedByUser:    this.getInternalName("Created By User",  "CreatedByUser"),
+            UpdatedByUser:    this.getInternalName("Updated By User",  "UpdatedByUser"),
+            CreatedOn:        this.getInternalName("Created On",       "CreatedOn"),
+            UpdatedOn:        this.getInternalName("Updated On",       "UpdatedOn"),
+            Description:      this.getInternalName("Description",      "Description"),
+            Regarding:        this.getInternalName("Regarding",        "Regarding"),
+            DueDate:          this.getInternalName("Due Date",         "DueDate"),
+            Resolution:       this.getInternalName("Resolution",       "Resolution"),
+            EmailNotifications: this.getInternalName("Email Notification", "EmailNotifications"),
+        };
+
+        const selects = ["*", "Id", "Title", "Author/Title", "Author/EMail", "Editor/Title", "Editor/EMail", "Created", "Modified", "Attachments", `${names.Status}/Title`, `${names.Status}/Name`, `${names.Category}/Title`, `${names.Category}/Name`, `${names.Classification}/Title`, `${names.Classification}/Name`, `${names.Priority}/Title`, `${names.Priority}/Name`];
+        const expands = ["Author", "Editor", "AttachmentFiles", names.Status, names.Category, names.Classification, names.Priority];
+
+        const safelyAddSelect = (internalName: string): void => {
+            if (fieldInternalNames.indexOf(internalName) < 0) return;
+            const fieldType = this._fieldTypeMap.get(internalName) || "";
+            if (fieldType === "User" || fieldType === "UserMulti") {
+                selects.push(`${internalName}/Id`, `${internalName}/Title`, `${internalName}/EMail`);
+                expands.push(internalName);
+            } else if (fieldType === "Lookup" || fieldType === "LookupMulti") {
+                selects.push(`${internalName}/Id`, `${internalName}/Title`);
+                expands.push(internalName);
+            } else {
+                selects.push(internalName);
+            }
+        };
+
+        safelyAddSelect(names.Subject);
+        safelyAddSelect(names.Status);
+        safelyAddSelect(names.Category);
+        safelyAddSelect(names.Classification);
+        safelyAddSelect(names.Priority);
+        safelyAddSelect(names.TaskOwner);
+        safelyAddSelect(names.AssigneeInternal);
+        safelyAddSelect(names.AssigneeExternal);
+        safelyAddSelect(names.StartDate);
+        safelyAddSelect(names.CompletionDate);
+        safelyAddSelect(names.CompletedPercent);
+        safelyAddSelect(names.CreatedByUser);
+        safelyAddSelect(names.UpdatedByUser);
+        safelyAddSelect(names.CreatedOn);
+        safelyAddSelect(names.UpdatedOn);
+        safelyAddSelect(names.Description);
+        safelyAddSelect(names.Regarding);
+        safelyAddSelect(names.DueDate);
+        safelyAddSelect(names.Resolution);
+        safelyAddSelect(names.EmailNotifications);
+
+        try {
+            // Mapping sort field to internal name if needed
+            let realSortField = sortField;
+            if (sortField === "TaskOwner") realSortField = `${names.TaskOwner}/Title`;
+            else if (sortField === "Subject")  realSortField = names.Subject;
+            else if (sortField === "Regarding") realSortField = names.Regarding;
+
+            let query = this._sp.web.lists
+                .getByTitle(this._listTitle).items
+                .select(...selects)
+                .expand(...expands)
+                .top(4999)
+                .orderBy(realSortField, isAscending);
+
+            if (searchQuery) {
+                let filter = `(substringof('${searchQuery}', ${names.Subject}) or substringof('${searchQuery}', ${names.Regarding}) or substringof('${searchQuery}', ${names.TaskOwner}/Title))`;
+                if (!isNaN(Number(searchQuery))) {
+                    filter = `(Id eq ${searchQuery} or ${filter})`;
+                }
+                query = query.filter(filter);
+            }
+
+            const rawItems = await query();
+
+            return rawItems.map(item => {
+                const getLookup = (n: string): { Id: number; Title: string; Name?: string } | undefined => {
+                    const v = item[n];
+                    if (v === null || v === undefined || v === "") return undefined;
+                    if (typeof v === "object") return { Id: v.Id || 0, Title: v.Title || v.Name || "", Name: v.Name };
+                    if (typeof v === "string") return { Id: 0, Title: v };
+                    return undefined;
+                };
+                const getPerson = (n: string): { Id: number; Title: string; EMail: string } | undefined => {
+                    const v = item[n];
+                    if (!v || typeof v !== "object") return undefined;
+                    return { Id: v.Id || 0, Title: v.Title || "", EMail: v.EMail || "" };
+                };
+                return {
+                    Id: item.Id,
+                    Title: item[names.Subject] || item.Title || "",
+                    Description: item[names.Description],
+                    Status:         getLookup(names.Status),
+                    Category:       getLookup(names.Category),
+                    Classification: getLookup(names.Classification),
+                    Priority:       getLookup(names.Priority),
+                    TaskOwner:        getPerson(names.TaskOwner),
+                    AssigneeInternal: getPerson(names.AssigneeInternal),
+                    AssigneeExternal: getPerson(names.AssigneeExternal),
+                    Regarding:        item[names.Regarding],
+                    DueDate:          item[names.DueDate],
+                    StartDate:        item[names.StartDate],
+                    CompletionDate:   item[names.CompletionDate],
+                    CompletedPercent: item[names.CompletedPercent],
+                    EmailNotifications: item[names.EmailNotifications],
+                    Author:  getPerson(names.CreatedByUser)  || item.Author,
+                    Editor:  getPerson(names.UpdatedByUser)  || item.Editor,
+                    Created: item[names.CreatedOn]  || item.Created,
+                    Modified: item[names.UpdatedOn] || item.Modified,
+                    Resolution: item[names.Resolution],
+                    AttachmentFiles: item.AttachmentFiles || [],
+                };
+            });
+        } catch (error) {
+            console.error(`[SPService] Filtered query failed:`, error);
+            return [];
+        }
+    }
+
     public async getToDoItems(): Promise<IToDoItem[]> {
         await this.init();
 
@@ -125,8 +441,8 @@ export class SPService {
             EmailNotifications: this.getInternalName("Email Notification", "EmailNotifications"),
         };
 
-        const selects = ["Id", "Title", "Author/Title", "Author/EMail", "Editor/Title", "Editor/EMail", "Created", "Modified"];
-        const expands = ["Author", "Editor"];
+        const selects = ["*", "Id", "Title", "Author/Title", "Author/EMail", "Editor/Title", "Editor/EMail", "Created", "Modified", "Attachments", `${names.Status}/Title`, `${names.Status}/Name`, `${names.Category}/Title`, `${names.Category}/Name`, `${names.Classification}/Title`, `${names.Classification}/Name`, `${names.Priority}/Title`, `${names.Priority}/Name`];
+        const expands = ["Author", "Editor", "AttachmentFiles", names.Status, names.Category, names.Classification, names.Priority];
 
         // ─── Use ACTUAL TypeAsString to decide expand strategy ─────────────────
         const safelyAddSelect = (internalName: string): void => {
@@ -168,16 +484,20 @@ export class SPService {
         try {
             const rawItems = await this._sp.web.lists
                 .getByTitle(this._listTitle).items
+                .top(4999)
                 .select(...selects)
-                .expand(...expands)();
+                .expand(...expands)
+                .orderBy("Id", true)
+                ();
 
-            return rawItems.map(item => {
+            const items: any[] = rawItems;
+            return items.map((item: any) => {
 
                 // ── Handles Lookup (object) and Choice (string) ──────────────
-                const getLookup = (n: string): { Id: number; Title: string } | undefined => {
+                const getLookup = (n: string): { Id: number; Title: string; Name?: string } | undefined => {
                     const v = item[n];
                     if (v === null || v === undefined || v === "") return undefined;
-                    if (typeof v === "object") return { Id: v.Id || 0, Title: v.Title || "" };
+                    if (typeof v === "object") return { Id: v.Id || 0, Title: v.Title || v.Name || "", Name: v.Name };
                     if (typeof v === "string") return { Id: 0, Title: v };
                     return undefined;
                 };
@@ -211,6 +531,7 @@ export class SPService {
                     Created: item[names.CreatedOn]  || item.Created,
                     Modified: item[names.UpdatedOn] || item.Modified,
                     Resolution: item[names.Resolution],
+                    AttachmentFiles: item.AttachmentFiles || [],
                 };
             });
         } catch (error) {

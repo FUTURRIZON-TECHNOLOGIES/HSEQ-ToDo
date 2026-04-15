@@ -147,9 +147,10 @@
     gap: 16px;
     align-items: flex-start;
 
-    @media (max-width: 900px) {
+    @media (max-width: 1024px) {
         flex-direction: column;
         padding: 12px;
+        align-items: stretch;
     }
 }
 
@@ -315,28 +316,51 @@
 // Rich Text wrapper
 // ─────────────────────────────────────────────────────────────────────────────
 .richTextWrapper {
-    min-height: 260px;
+    min-height: 280px;
     display: flex;
     flex-direction: column;
+    width: 100%;
+    margin-bottom: 8px;
 
-    // Force the RichText editor container to expand
+    :global(.ms-Label) {
+        margin-bottom: 8px;
+    }
+
+    // Force the RichText editor container to expand and keep toolbar at top
     :global(.ql-toolbar) {
         border: 1px solid #d0d5de !important;
-        border-radius: 3px 3px 0 0;
-        background: #f7f8fc;
+        border-radius: 4px 4px 0 0;
+        background: #fdfdfe;
         flex-shrink: 0;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        padding: 8px !important;
     }
 
     :global(.ql-container) {
         border: 1px solid #d0d5de !important;
         border-top: none !important;
-        border-radius: 0 0 3px 3px;
-        min-height: 180px;
-        font-size: 13px;
+        border-radius: 0 0 4px 4px;
+        min-height: 200px;
+        max-height: 400px;
+        overflow-y: auto;
+        font-size: 14px;
+        background: #ffffff;
     }
 
     :global(.ql-editor) {
-        min-height: 180px;
+        min-height: 200px;
+        &.ql-blank::before {
+            font-style: italic;
+            color: #999;
+        }
+    }
+
+    &:hover {
+        :global(.ql-toolbar), :global(.ql-container) {
+            border-color: $primary-color !important;
+        }
     }
 }
 

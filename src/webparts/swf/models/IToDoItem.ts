@@ -5,10 +5,10 @@ export interface IToDoItem {
     Comment?: string;
     
     // Lookups (Objects for display)
-    Status?: { Id: number; Title: string };
-    Category?: { Id: number; Title: string };
-    Classification?: { Id: number; Title: string };
-    Priority?: { Id: number; Title: string };
+    Status?: { Id: number; Title: string; Name?: string };
+    Category?: { Id: number; Title: string; Name?: string };
+    Classification?: { Id: number; Title: string; Name?: string };
+    Priority?: { Id: number; Title: string; Name?: string };
     
     // People (Objects for display)
     TaskOwner?: { Id: number; Title: string; EMail: string };
@@ -35,6 +35,7 @@ export interface IToDoItem {
     Modified?: string;
     Editor?: { Title: string };
     Attachments?: boolean;
+    AttachmentFiles?: IAttachment[];
 
     // Field IDs for Saving
     StatusId?: number;

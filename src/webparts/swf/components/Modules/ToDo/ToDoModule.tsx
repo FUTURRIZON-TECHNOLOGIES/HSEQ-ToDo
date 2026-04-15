@@ -25,27 +25,57 @@ const stripHtml = (html: string | undefined): string => {
     return html.replace(/(<([^>]+)>)/gi, "").trim();
 };
 
+const PAGE_SIZE = 100;
+
 const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
     const [items, setItems] = React.useState<IToDoItem[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [selectedItem, setSelectedItem] = React.useState<IToDoItem | null>(null);
     const [isPanelOpen, setIsPanelOpen] = React.useState(false);
 
+    // ── Pagination & Search State ─────────────────────────────────────────────
+    const [currentPage, setCurrentPage] = React.useState(1);
+    const [totalCount, setTotalCount] = React.useState(0);
+    const [searchQuery, setSearchQuery] = React.useState('');
+    const [sortConfig, setSortConfig] = React.useState<{ field: string; isAscending: boolean }>({
+        field: 'Id',
+        isAscending: true
+    });
+    const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
     const spService = React.useMemo(() => new SPService(context), [context]);
 
-    const fetchItems = async () => {
+    const fetchData = React.useCallback(async (page: number, search: string, sortField: string, isAsc: boolean) => {
         setLoading(true);
         try {
-            const data = await spService.getToDoItems();
-            setItems(data);
+            const [data, total] = await Promise.all([
+                spService.getToDoItemsPaged(page, PAGE_SIZE, search, sortField, isAsc),
+                spService.getToDoTotalCount(search)
+            ]);
+            const mappedItems = data.map(item => ({
+                ...item,
+                StatusValue: item.Status?.Title || item.Status?.Name || item.StatusId?.toString() || item.Status?.toString() || "",
+                CategoryValue: item.Category?.Title || item.Category?.Name || item.CategoryId?.toString() || item.Category?.toString() || "",
+                ClassificationValue: item.Classification?.Title || item.Classification?.Name || item.ClassificationId?.toString() || item.Classification?.toString() || "",
+                PriorityValue: item.Priority?.Title || item.Priority?.Name || item.PriorityId?.toString() || item.Priority?.toString() || ""
+            }));
+            setItems(mappedItems);
+            setTotalCount(total);
         } catch (e) {
-            console.error('Fetch failed', e);
+            console.error('[ToDoModule] Fetch failed', e);
         } finally {
             setLoading(false);
         }
-    };
+    }, [spService]);
 
-    React.useEffect(() => { fetchItems(); }, []);
+    React.useEffect(() => {
+        fetchData(currentPage, searchQuery, sortConfig.field, sortConfig.isAscending);
+    }, [currentPage, searchQuery, sortConfig]);
+
+    // Keep a stable "refresh current page" reference for CRUD callbacks
+    const fetchItems = React.useCallback(() => 
+        fetchData(currentPage, searchQuery, sortConfig.field, sortConfig.isAscending), 
+    [fetchData, currentPage, searchQuery, sortConfig]);
 
     // ── Grid Column Definitions ───────────────────────────────────────────────
     const columns: IColumn[] = [
@@ -55,7 +85,33 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
         },
         {
             key: 'Regarding', name: 'Regarding', fieldName: 'Regarding',
-            minWidth: 120, maxWidth: 180, isResizable: true
+            minWidth: 120, maxWidth: 180, isResizable: true,
+            onRender: (item: IToDoItem) => {
+                if (typeof item.Regarding === 'object' && item.Regarding !== null) {
+                    return <span>{(item.Regarding as any).Title || '—'}</span>;
+                }
+                return <span>{item.Regarding || '—'}</span>;
+            }
+        },
+        {
+            key: 'Status', name: 'Status', fieldName: 'StatusValue',
+            minWidth: 90, maxWidth: 120, isResizable: true,
+            onRender: (item: any) => <span>{item.StatusValue || '—'}</span>
+        },
+        {
+            key: 'Category', name: 'Category', fieldName: 'CategoryValue',
+            minWidth: 100, maxWidth: 130, isResizable: true,
+            onRender: (item: any) => <span>{item.CategoryValue || '—'}</span>
+        },
+        {
+            key: 'Classification', name: 'Classification', fieldName: 'ClassificationValue',
+            minWidth: 100, maxWidth: 130, isResizable: true,
+            onRender: (item: any) => <span>{item.ClassificationValue || '—'}</span>
+        },
+        {
+            key: 'Priority', name: 'Priority', fieldName: 'PriorityValue',
+            minWidth: 80, maxWidth: 100, isResizable: true,
+            onRender: (item: any) => <span>{item.PriorityValue || '—'}</span>
         },
         {
             key: 'TaskOwner', name: 'Task Owner', fieldName: 'TaskOwner',
@@ -70,6 +126,25 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
                     </div>
                 );
             }
+        },
+        {
+            key: 'AssigneeInternal', name: 'Assignee Internal', fieldName: 'AssigneeInternal',
+            minWidth: 120, maxWidth: 160, isResizable: true,
+            onRender: (item: IToDoItem) => {
+                const title = item.AssigneeInternal?.Title || '';
+                if (!title) return <span>—</span>;
+                return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Icon iconName="Contact" style={{ fontSize: 12, color: '#0078d4' }} />
+                        <span>{title}</span>
+                    </div>
+                );
+            }
+        },
+        {
+            key: 'DueDate', name: 'Due Date', fieldName: 'DueDate',
+            minWidth: 90, maxWidth: 110, isResizable: true,
+            onRender: (item: IToDoItem) => <span>{formatDate(item.DueDate)}</span>
         },
         {
             key: 'StartDate', name: 'Start Date', fieldName: 'StartDate',
@@ -96,6 +171,23 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
                             }} />
                         </div>
                         <span style={{ fontSize: 11, color: '#555', whiteSpace: 'nowrap' }}>{pct}%</span>
+                    </div>
+                );
+            }
+        },
+        {
+            key: 'Attachments', name: 'Attachments', fieldName: 'AttachmentFiles',
+            minWidth: 120, maxWidth: 220, isResizable: true,
+            onRender: (item: IToDoItem) => {
+                if (!item.AttachmentFiles || item.AttachmentFiles.length === 0) return <span>—</span>;
+                return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {item.AttachmentFiles.map((file, idx) => (
+                            <a key={idx} href={file.ServerRelativeUrl} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', color: '#0078D4', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <Icon iconName="Attach" style={{ fontSize: 12 }} />
+                                <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={file.FileName}>{file.FileName}</span>
+                            </a>
+                        ))}
                     </div>
                 );
             }
@@ -127,44 +219,47 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
         'Modified On': formatDate(item.Modified)
     }));
 
-    // ── Export Handlers ───────────────────────────────────────────────────────
-    const handleExportExcel = (data: any[]) => {
-        import('../../../services/ExportService').then(({ ExportService }) => {
-            ExportService.exportToExcel(flattenItems(data), 'ASP_Assist_Group_Tasks');
-        });
+    // ── Export Handlers (FETCH FULL FILTERED DATA) ───────────────────────────
+    const handleExportExcel = async (pagedData: any[]) => {
+        setLoading(true);
+        try {
+            const allData = await spService.getToDoItemsFiltered(searchQuery, sortConfig.field, sortConfig.isAscending);
+            const { ExportService } = await import('../../../services/ExportService');
+            ExportService.exportToExcel(flattenItems(allData), 'ASP_Assist_Group_Tasks');
+        } finally { setLoading(false); }
     };
 
-    const handleExportCSV = (data: any[]) => {
-        import('../../../services/ExportService').then(({ ExportService }) => {
-            ExportService.exportToCSV(flattenItems(data), 'ASP_Assist_Group_Tasks');
-        });
+    const handleExportCSV = async (pagedData: any[]) => {
+        setLoading(true);
+        try {
+            const allData = await spService.getToDoItemsFiltered(searchQuery, sortConfig.field, sortConfig.isAscending);
+            const { ExportService } = await import('../../../services/ExportService');
+            ExportService.exportToCSV(flattenItems(allData), 'ASP_Assist_Group_Tasks');
+        } finally { setLoading(false); }
     };
 
-    const handleExportPDF = (data: any[]) => {
-        import('../../../services/ExportService').then(({ ExportService }) => {
-            const flattened = flattenItems(data);
-            // For PDF, we need flat keys and headers separately
+    const handleExportPDF = async (pagedData: any[]) => {
+        setLoading(true);
+        try {
+            const allData = await spService.getToDoItemsFiltered(searchQuery, sortConfig.field, sortConfig.isAscending);
+            const { ExportService } = await import('../../../services/ExportService');
+            const flattened = flattenItems(allData);
             const headers = Object.keys(flattened[0] || {});
-            ExportService.exportToPDF(
-                flattened,
-                'ASP Assist Group Tasks',
-                headers,
-                headers // Use headers as keys directly since objects are now keyed by display names
-            );
-        });
+            ExportService.exportToPDF(flattened, 'ASP Assist Group Tasks', headers, headers);
+        } finally { setLoading(false); }
     };
 
-    const handleExportZip = (data: any[]) => {
-        import('../../../services/ExportService').then(({ ExportService }) => {
-            const flattened = flattenItems(data);
+    const handleExportZip = async (pagedData: any[]) => {
+        setLoading(true);
+        try {
+            const allData = await spService.getToDoItemsFiltered(searchQuery, sortConfig.field, sortConfig.isAscending);
+            const { ExportService } = await import('../../../services/ExportService');
+            const flattened = flattenItems(allData);
             const headers = Object.keys(flattened[0] || {});
-            ExportService.exportToZip(
-                flattened,
-                'ASP_Assist_Group_Tasks',
-                headers,
-                headers
-            ).catch(e => console.error('ZIP export failed', e));
-        });
+            await ExportService.exportToZip(flattened, 'ASP_Assist_Group_Tasks', headers, headers);
+        } catch (e) {
+            console.error('ZIP export failed', e);
+        } finally { setLoading(false); }
     };
 
     // ── CRUD Handlers ─────────────────────────────────────────────────────────
@@ -181,14 +276,32 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
     const handleSave = async (payload: any, mode: 'stay' | 'close' | 'new') => {
         try {
             let resultItemId = selectedItem?.Id;
+            // const isNew = !selectedItem;
+
             if (selectedItem) {
                 await spService.updateToDoItem(selectedItem.Id!, payload);
             } else {
                 const result = await spService.addToDoItem(payload);
                 resultItemId = result.data?.Id || result.Id;
             }
-            const allItems = await spService.getToDoItems();
-            setItems(allItems);
+            
+            // Refresh counts and current page
+            const newTotalCount = await spService.getToDoTotalCount(searchQuery);
+            setTotalCount(newTotalCount);
+
+            // Stay on current page to keep context, unless it's no longer valid
+            let targetPage = currentPage;
+            const maxPage = Math.max(1, Math.ceil(newTotalCount / PAGE_SIZE));
+            if (targetPage > maxPage) targetPage = maxPage;
+
+            const refreshedData = await spService.getToDoItemsPaged(
+                targetPage, 
+                PAGE_SIZE, 
+                searchQuery, 
+                sortConfig.field, 
+                sortConfig.isAscending
+            );
+            setItems(refreshedData);
 
             if (mode === 'close') {
                 setIsPanelOpen(false);
@@ -196,7 +309,7 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
             } else if (mode === 'new') {
                 setSelectedItem(null);
             } else if (mode === 'stay' && resultItemId) {
-                const freshItem = allItems.find(i => i.Id === resultItemId);
+                const freshItem = refreshedData.find(i => i.Id === resultItemId);
                 if (freshItem) setSelectedItem(freshItem);
             }
         } catch (e) {
@@ -215,10 +328,26 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
                 onEdit={handleEdit}
                 onDelete={handleDelete}
                 onRefresh={fetchItems}
+                onSearch={(term) => {
+                    setSearchQuery(term);
+                    setCurrentPage(1); // Reset to first page on search
+                }}
                 onExportExcel={handleExportExcel}
                 onExportCSV={handleExportCSV}
                 onExportPDF={handleExportPDF}
                 onExportZip={handleExportZip}
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalCount={totalCount}
+                pageSize={PAGE_SIZE}
+                clientSidePagination={false}
+                onPageChange={(page) => setCurrentPage(page)}
+                sortField={sortConfig.field}
+                isAscending={sortConfig.isAscending}
+                onSort={(field, isAsc) => {
+                    setSortConfig({ field, isAscending: isAsc });
+                    setCurrentPage(1); // Reset to first page on sort change
+                }}
             />
 
             <Panel

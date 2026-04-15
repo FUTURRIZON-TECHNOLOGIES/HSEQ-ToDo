@@ -507,6 +507,9 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
                     {/* Resolution — rich text with visible toolbar */}
                     <Section title="RESOLUTION" icon="QuickNote">
                         <div className={styles.richTextWrapper}>
+                            <label className="ms-Label" style={{ fontWeight: 600, fontSize: 12, marginBottom: 8, display: 'block' }}>
+                                Resolution / Final Notes
+                            </label>
                             <RichText
                                 value={formData.Resolution || ''}
                                 onChange={text => { setFormData({ ...formData, Resolution: text }); return text; }}
