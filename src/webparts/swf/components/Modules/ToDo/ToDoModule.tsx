@@ -283,6 +283,16 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
             } else {
                 const result = await spService.addToDoItem(payload);
                 resultItemId = result.data?.Id || result.Id;
+
+                if (payload.PendingAttachments && payload.PendingAttachments.length > 0 && resultItemId) {
+                    for (const file of payload.PendingAttachments) {
+                        try {
+                            await spService.uploadAttachment(resultItemId, file);
+                        } catch (err) {
+                            console.error('Failed to upload pending attachment', err);
+                        }
+                    }
+                }
             }
             
             // Refresh counts and current page

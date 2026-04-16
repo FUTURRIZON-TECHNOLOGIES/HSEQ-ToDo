@@ -181,7 +181,7 @@ const GenericGrid: React.FC<IGenericGridProps> = (props) => {
             onRender: () => (
                 <div className={styles.searchContainer}>
                     <SearchBox
-                        placeholder="Search tasks..."
+                        placeholder="Search across all fields..."
                         className={styles.searchBox}
                         value={searchQuery}
                         onChange={(_, newValue) => setSearchQuery(newValue || '')}
@@ -272,38 +272,37 @@ const GenericGrid: React.FC<IGenericGridProps> = (props) => {
             {/* ── Pagination Bar ── */}
             {props.onPageChange && (
                 <div className={styles.paginationBar}>
-                    <button
-                        className={styles.pageBtn}
-                        disabled={props.loading || (props.currentPage ?? 1) <= 1}
-                        onClick={() => props.onPageChange!((props.currentPage ?? 1) - 1)}
-                        title="Previous page"
-                    >
-                        ◀ Previous
-                    </button>
+                    <div className={styles.paginationLeft}>
+                        <button
+                            className={styles.pageBtn}
+                            disabled={props.loading || (props.currentPage ?? 1) <= 1}
+                            onClick={() => props.onPageChange!((props.currentPage ?? 1) - 1)}
+                            title="Previous page"
+                        >
+                            ◀ Previous
+                        </button>
+                    </div>
 
                     <div className={styles.pageInfo}>
                         {props.loading ? (
                             <span className={styles.pageLoading}>Loading…</span>
                         ) : (
-                            <>
-                                <span className={styles.pageCurrent}>
-                                    Page <strong>{props.currentPage ?? 1}</strong> of <strong>{props.totalPages ?? 1}</strong>
-                                </span>
-                                {props.totalCount !== undefined && (
-                                    <span className={styles.pageTotal}>&nbsp;· {props.totalCount.toLocaleString()} items total</span>
-                                )}
-                            </>
+                            <span className={styles.pageTotal}>
+                                Showing <strong>{((props.currentPage ?? 1) - 1) * 100 + 1}–{Math.min((props.currentPage ?? 1) * 100, props.totalCount || 0)}</strong> items
+                            </span>
                         )}
                     </div>
 
-                    <button
-                        className={styles.pageBtn}
-                        disabled={props.loading || (props.currentPage ?? 1) >= (props.totalPages ?? 1)}
-                        onClick={() => props.onPageChange!((props.currentPage ?? 1) + 1)}
-                        title="Next page"
-                    >
-                        Next ▶
-                    </button>
+                    <div className={styles.paginationRight}>
+                        <button
+                            className={styles.pageBtn}
+                            disabled={props.loading || (props.currentPage ?? 1) >= (props.totalPages ?? 1)}
+                            onClick={() => props.onPageChange!((props.currentPage ?? 1) + 1)}
+                            title="Next page"
+                        >
+                            Next ▶
+                        </button>
+                    </div>
                 </div>
             )}
         </div>

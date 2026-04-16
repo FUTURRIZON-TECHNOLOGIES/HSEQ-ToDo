@@ -5,6 +5,8 @@ import "@pnp/sp/lists";
 import "@pnp/sp/items";
 import "@pnp/sp/attachments";
 import "@pnp/sp/fields";
+import "@pnp/sp/search";
+import { SearchResults } from "@pnp/sp/search";
 import { IToDoItem, ILookupOption, IAttachment } from "../models/IToDoItem";
 
 export class SPService {
@@ -13,6 +15,7 @@ export class SPService {
     // ─── NEW: stores TypeAsString for each internal name ──────────────────────
     private _fieldTypeMap: Map<string, string> = new Map();
     private _listTitle: string = "";
+    private _listId: string = "";
     private _isInitialized: boolean = false;
     private _lastError: string = "";
 
@@ -32,7 +35,10 @@ export class SPService {
             );
             this._listTitle = match ? match.Title : "ToDo";
 
-            console.log(`[SPService] List Identified: "${this._listTitle}" (searching for "${urlName}")`);
+            const listData = await this._sp.web.lists.getByTitle(this._listTitle).select("Id", "Title")();
+            this._listId = listData.Id;
+
+            console.log(`[SPService] List Identified: "${this._listTitle}" (ID: ${this._listId})`);
 
             const fields = await this._sp.web.lists.getByTitle(this._listTitle).fields
                 .select("Title", "InternalName", "TypeAsString")();
@@ -97,34 +103,34 @@ export class SPService {
         }));
     }
 
+
+
     public async getToDoTotalCount(searchQuery?: string): Promise<number> {
         await this.init();
         try {
-            const names = {
-                Subject:   this.getInternalName("Subject",    "Title"),
-                Regarding: this.getInternalName("Regarding",  "Regarding"),
-                TaskOwner: this.getInternalName("Task Owner", "TaskOwner"),
-            };
-
-            let filter = "";
             if (searchQuery) {
-                filter = `(substringof('${searchQuery}', ${names.Subject}) or substringof('${searchQuery}', ${names.Regarding}) or substringof('${searchQuery}', ${names.TaskOwner}/Title))`;
-                if (!isNaN(Number(searchQuery))) {
-                    filter = `(Id eq ${searchQuery} or ${filter})`;
-                }
+                const results: SearchResults = await this._sp.search({
+                    Querytext: `${searchQuery} ListId:${this._listId}`,
+                    RowLimit: 0,
+                    SelectProperties: ["ListItemID"]
+                });
+                return results.TotalRows;
+            } else {
+                // For the total count (no search), the list metadata is the most reliable scale-safe source.
+                const listData = await this._sp.web.lists.getByTitle(this._listTitle).select("ItemCount")();
+                return listData.ItemCount || 0;
             }
-
-            // Using select("Id").top(5000) is more reliable than list-level ItemCount
-            // which can be cached or exclude certain items.
-            let query = this._sp.web.lists.getByTitle(this._listTitle).items.select("Id").top(5000);
-            if (filter) query = query.filter(filter);
-            
-            const items = await query();
-            return items.length;
         } catch (e) {
             console.warn("[SPService] Could not fetch total count:", e);
-            return 0;
+            // Emergency fallback for large lists
+            const searchFallback = await this._sp.search({
+                Querytext: `ListId:${this._listId}`,
+                RowLimit: 0,
+                SelectProperties: ["ListItemID"]
+            });
+            return searchFallback.TotalRows || 0;
         }
+        return 0;
     }
 
     /** Fetches a single page of items using server-side skip/top with optional search and sort */
@@ -203,31 +209,61 @@ export class SPService {
         const skipCount = (page - 1) * pageSize;
 
         try {
+            let rawItems: any[] = [];
             // Mapping sort field to internal name if needed
             let realSortField = sortField;
             if (sortField === "TaskOwner") realSortField = `${names.TaskOwner}/Title`;
             else if (sortField === "Subject")  realSortField = names.Subject;
             else if (sortField === "Regarding") realSortField = names.Regarding;
 
-            let baseQuery = this._sp.web.lists
-                .getByTitle(this._listTitle).items
-                .select(...selects)
-                .expand(...expands)
-                .top(pageSize)
-                .orderBy(realSortField, isAscending);
+            // Decide between Search (Threshold-safe) and REST (Real-time)
+            const useSearch = !!searchQuery || skipCount >= 5000;
 
-            if (searchQuery) {
-                let filter = `(substringof('${searchQuery}', ${names.Subject}) or substringof('${searchQuery}', ${names.Regarding}) or substringof('${searchQuery}', ${names.TaskOwner}/Title))`;
+            if (useSearch) {
+                // Use Search API for threshold-safe deep paging or keyword search
+                const queryText = searchQuery 
+                    ? `${searchQuery} ListId:${this._listId}` 
+                    : `ListId:${this._listId}`;
+
+                const searchResults: SearchResults = await this._sp.search({
+                    Querytext: queryText,
+                    StartRow: skipCount,
+                    RowLimit: pageSize,
+                    SelectProperties: ["ListItemID"],
+                    // Simple sorting mapping for search
+                    SortList: [{ Property: sortField === 'Id' ? 'ListItemID' : sortField, Direction: isAscending ? 0 : 1 }]
+                });
+
+                if (searchResults.TotalRows === 0) return [];
+                const ids = searchResults.PrimarySearchResults.map((r: any) => r.ListItemID).filter((id: any) => id);
+
+                if (ids.length === 0) return [];
+
+                // Hydrate results via REST using IDs (LVT-safe)
+                const idFilter = ids.map((id: any) => `Id eq ${id}`).join(' or ');
+                rawItems = await this._sp.web.lists.getByTitle(this._listTitle).items
+                    .filter(idFilter)
+                    .select(...selects)
+                    .expand(...expands)();
                 
-                if (!isNaN(Number(searchQuery))) {
-                    filter = `(Id eq ${searchQuery} or ${filter})`;
-                }
-                baseQuery = baseQuery.filter(filter);
-            }
+                // REST filter doesn't guarantee search order, so we re-sort to match search results
+                rawItems.sort((a, b) => {
+                    const idxA = ids.indexOf(a.Id.toString());
+                    const idxB = ids.indexOf(b.Id.toString());
+                    return idxA - idxB;
+                });
 
-            const rawItems = await (skipCount > 0
-                ? baseQuery.skip(skipCount)()
-                : baseQuery());
+            } else {
+                // Use REST for real-time visibility on the first 5000 items (no crawl delay)
+                let baseQuery = this._sp.web.lists
+                    .getByTitle(this._listTitle).items
+                    .select(...selects)
+                    .expand(...expands)
+                    .top(pageSize)
+                    .orderBy(realSortField, isAscending);
+
+                rawItems = await (skipCount > 0 ? baseQuery.skip(skipCount)() : baseQuery());
+            }
 
             return rawItems.map(item => {
                 const getLookup = (n: string): { Id: number; Title: string; Name?: string } | undefined => {
@@ -346,28 +382,49 @@ export class SPService {
         safelyAddSelect(names.EmailNotifications);
 
         try {
-            // Mapping sort field to internal name if needed
-            let realSortField = sortField;
+            let rawItems: any[] = [];
+            
+            // Mapping sort field to internal name if needed (Unused in these paths)
+            /* let realSortField = sortField;
             if (sortField === "TaskOwner") realSortField = `${names.TaskOwner}/Title`;
             else if (sortField === "Subject")  realSortField = names.Subject;
-            else if (sortField === "Regarding") realSortField = names.Regarding;
-
-            let query = this._sp.web.lists
-                .getByTitle(this._listTitle).items
-                .select(...selects)
-                .expand(...expands)
-                .top(4999)
-                .orderBy(realSortField, isAscending);
+            else if (sortField === "Regarding") realSortField = names.Regarding; */
 
             if (searchQuery) {
-                let filter = `(substringof('${searchQuery}', ${names.Subject}) or substringof('${searchQuery}', ${names.Regarding}) or substringof('${searchQuery}', ${names.TaskOwner}/Title))`;
-                if (!isNaN(Number(searchQuery))) {
-                    filter = `(Id eq ${searchQuery} or ${filter})`;
-                }
-                query = query.filter(filter);
-            }
+                // For export search, we might need more items than pageSize
+                // Use Search to find all relevant IDs
+                const searchResults: SearchResults = await this._sp.search({
+                    Querytext: `${searchQuery} ListId:${this._listId}`,
+                    RowLimit: 5000,
+                    SelectProperties: ["ListItemID"]
+                });
 
-            const rawItems = await query();
+                if (searchResults.TotalRows === 0) return [];
+                const ids = searchResults.PrimarySearchResults.map((r: any) => r.ListItemID).filter((id: any) => id);
+
+                if (ids.length === 0) return [];
+
+                // In a real large-scale scenario, we'd batch these IDs too.
+                // For now, we fetch them in a single filtered call which is safe for 5000 IDs.
+                const idFilter = ids.map((id: any) => `Id eq ${id}`).join(' or ');
+                rawItems = await this._sp.web.lists.getByTitle(this._listTitle).items
+                    .filter(idFilter)
+                    .select(...selects)
+                    .expand(...expands)();
+
+            } else {
+                // Fetch in batches for mass export to avoid LVT (PnP JS v4 Async Iterator)
+                const itemIterator = this._sp.web.lists.getByTitle(this._listTitle).items
+                    .select(...selects)
+                    .expand(...expands)
+                    .top(2000)
+                    .orderBy("Id", true);
+                
+                for await (const items of itemIterator) {
+                    rawItems.push(...items);
+                    if (rawItems.length >= 10000) break; // Safety cap
+                }
+            }
 
             return rawItems.map(item => {
                 const getLookup = (n: string): { Id: number; Title: string; Name?: string } | undefined => {
@@ -482,13 +539,17 @@ export class SPService {
         safelyAddSelect(names.EmailNotifications);
 
         try {
-            const rawItems = await this._sp.web.lists
-                .getByTitle(this._listTitle).items
-                .top(4999)
+            const itemIterator = this._sp.web.lists.getByTitle(this._listTitle).items
                 .select(...selects)
                 .expand(...expands)
-                .orderBy("Id", true)
-                ();
+                .top(2000)
+                .orderBy("Id", true);
+            
+            const rawItems: any[] = [];
+            for await (const items of itemIterator) {
+                rawItems.push(...items);
+                if (rawItems.length >= 5000) break;
+            }
 
             const items: any[] = rawItems;
             return items.map((item: any) => {

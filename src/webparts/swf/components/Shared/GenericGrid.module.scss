@@ -264,6 +264,12 @@
             }
         }
 
+        .paginationLeft, .paginationRight {
+            width: 140px;
+            display: flex;
+            justify-content: center;
+        }
+
         .pageInfo {
             display: flex;
             flex-direction: column;
@@ -272,23 +278,17 @@
             flex: 1;
             text-align: center;
             padding: 0 16px;
-            gap: 2px;
-
-            .pageCurrent {
-                font-size: 13px;
-                color: #333;
-                line-height: 1.4;
-
-                strong {
-                    color: $primary-color;
-                    font-weight: 700;
-                }
-            }
+            gap: 4px;
 
             .pageTotal {
-                font-size: 11px;
-                color: #999;
-                line-height: 1.2;
+                font-size: 13px;
+                color: #555;
+                font-weight: 500;
+                
+                strong {
+                    color: #000;
+                    font-weight: 700;
+                }
             }
 
             .pageLoading {

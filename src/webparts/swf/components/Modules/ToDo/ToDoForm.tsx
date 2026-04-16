@@ -65,6 +65,7 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
 
     const [formData, setFormData] = React.useState<IToDoItem>(buildFormData(item));
     const [attachments, setAttachments] = React.useState<any[]>([]);
+    const [pendingAttachments, setPendingAttachments] = React.useState<File[]>([]);
     const [options, setOptions] = React.useState<{
         status: IDropdownOption[];
         category: IDropdownOption[];
@@ -96,6 +97,7 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
         // CRITICAL: reset formData including IDs from lookup objects
         // ───────────────────────────────────────────────────────────────────────
         setFormData(buildFormData(item));
+        setPendingAttachments([]);
 
         const loadOptions = async () => {
             setLoadingOptions(true);
@@ -155,6 +157,8 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
         payload[getInternal('Email Notification','EmailNotifications')]   = formData.EmailNotifications;
         payload[getInternal('Completion Date',   'CompletionDate')]       = formData.CompletionDate;
 
+        payload.PendingAttachments = pendingAttachments;
+
         try { await onSave(payload, mode); }
         finally { setSaving(false); }
     };
@@ -165,15 +169,29 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
             await spService.uploadAttachment(item.Id, file);
             await fetchAttachments();
         } else {
-            alert('Please save the record first before adding attachments.');
+            setPendingAttachments(prev => [...prev, file]);
         }
     };
     const handleDeleteAttachment = async (fileName: string) => {
-        if (item?.Id && confirm(`Delete "${fileName}"?`)) {
-            await spService.deleteAttachment(item.Id, fileName);
-            await fetchAttachments();
+        if (item?.Id) {
+            if (confirm(`Delete "${fileName}"?`)) {
+                await spService.deleteAttachment(item.Id, fileName);
+                await fetchAttachments();
+            }
+        } else {
+            setPendingAttachments(prev => prev.filter(f => f.name !== fileName));
         }
     };
+
+    const allAttachments = React.useMemo(() => {
+        const existing = attachments.map(a => ({ ...a, isPending: false }));
+        const pending = pendingAttachments.map(f => ({
+            FileName: f.name,
+            ServerRelativeUrl: '#',
+            isPending: true
+        }));
+        return [...existing, ...pending];
+    }, [attachments, pendingAttachments]);
 
     // ── People picker shared props ────────────────────────────────────────────
     const pickerProps = {
@@ -494,7 +512,7 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
                     {/* Attachments */}
                     <Section title="ATTACHMENTS" icon="Attach">
                         <AttachmentControl
-                            attachments={attachments}
+                            attachments={allAttachments as any}
                             onUpload={handleUpload}
                             onDelete={handleDeleteAttachment}
                         />
