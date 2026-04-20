@@ -20,6 +20,7 @@ import { RichText } from '@pnp/spfx-controls-react/lib/RichText';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import AttachmentControl from '../../Shared/AttachmentControl';
 import styles from './ToDoForm.module.scss';
+import { REGARDING_DYNAMIC_FIELDS, getRegardingFieldLabel } from './RegardingConfig';
 
 export interface IToDoFormProps {
     item: IToDoItem | null;
@@ -77,6 +78,10 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
     const [saving, setSaving] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
 
+    // ── Dynamic Field State for 'Regarding' ──────────────
+    const [dynamicFieldKey, setDynamicFieldKey] = React.useState<string>("");
+    const [dynamicFieldValue, setDynamicFieldValue] = React.useState<string>("");
+
     const regardingChoices: IDropdownOption[] = [
         'Audit & Inspection', 'Clients', 'Compliance Register', 'Employee', 'Incident',
         'Leads', 'Meetings', 'Project', 'Proposal', 'Subcontractor',
@@ -98,6 +103,16 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
         // ───────────────────────────────────────────────────────────────────────
         setFormData(buildFormData(item));
         setPendingAttachments([]);
+
+        // ── Resolve and Set Dynamic Field for Edit mode ──
+        if (item?.Regarding) {
+            const fieldKey = REGARDING_DYNAMIC_FIELDS[item.Regarding];
+            setDynamicFieldKey(fieldKey || "");
+            setDynamicFieldValue(fieldKey ? (item as any)[fieldKey] || "" : "");
+        } else {
+            setDynamicFieldKey("");
+            setDynamicFieldValue("");
+        }
 
         const loadOptions = async () => {
             setLoadingOptions(true);
@@ -127,7 +142,23 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
 
     // ── Save handler ──────────────────────────────────────────────────────────
     const handleSaveInternal = async (mode: 'stay' | 'close' | 'new') => {
-        if (!formData.Title?.trim()) { setError('Subject is required.'); return; }
+        const requiredFields = [
+            { key: 'Title', label: 'Subject' },
+            { key: 'Regarding', label: 'Regarding' },
+            { key: 'CategoryId', label: 'Category' },
+            { key: 'ClassificationId', label: 'Classification' },
+            { key: 'PriorityId', label: 'Priority' },
+            { key: 'StatusId', label: 'Status' }
+        ];
+
+        for (const field of requiredFields) {
+            const val = (formData as any)[field.key];
+            if (val === undefined || val === null || (typeof val === 'string' && !val.trim())) {
+                setError(`${field.label} is required.`);
+                return;
+            }
+        }
+
         setError(null);
         setSaving(true);
         const getInternal = (displayName: string, fallback: string) =>
@@ -156,6 +187,11 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
         payload[getInternal('Completed %',       'CompletedPercent')]     = formData.CompletedPercent;
         payload[getInternal('Email Notification','EmailNotifications')]   = formData.EmailNotifications;
         payload[getInternal('Completion Date',   'CompletionDate')]       = formData.CompletionDate;
+
+        // ── Dynamic 'Regarding' Fields Integration ────────
+        if (dynamicFieldKey && dynamicFieldValue) {
+            payload[dynamicFieldKey] = dynamicFieldValue;
+        }
 
         payload.PendingAttachments = pendingAttachments;
 
@@ -311,20 +347,37 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
                         <div className={styles.fieldRow}>
                             <div className={styles.fieldHalf}>
                                 <Dropdown
-                                    label="Regarding"
+                                    label="Regarding" required
                                     options={options.regarding}
                                     selectedKey={formData.Regarding}
-                                    onChange={(_, opt) => setFormData({ ...formData, Regarding: opt?.key as string })}
+                                    onChange={(_, opt) => {
+                                        const newVal = opt?.key as string;
+                                        setFormData({ ...formData, Regarding: newVal });
+                                        
+                                        // Set correct internal field key using mapping and reset previous value
+                                        const fieldKey = REGARDING_DYNAMIC_FIELDS[newVal];
+                                        setDynamicFieldKey(fieldKey || "");
+                                        setDynamicFieldValue("");
+                                    }}
                                     placeholder="Select…"
                                 />
                             </div>
-                            <div className={styles.fieldHalf} />
+                            <div className={styles.fieldHalf}>
+                                {dynamicFieldKey && (
+                                    <TextField
+                                        label={getRegardingFieldLabel(dynamicFieldKey)}
+                                        value={dynamicFieldValue}
+                                        onChange={(_, val) => setDynamicFieldValue(val || '')}
+                                        placeholder={`Enter ${getRegardingFieldLabel(dynamicFieldKey).toLowerCase()}…`}
+                                    />
+                                )}
+                            </div>
                         </div>
 
                         <div className={styles.fieldRow}>
                             <div className={styles.fieldHalf}>
                                 <Dropdown
-                                    label="Category"
+                                    label="Category" required
                                     options={options.category}
                                     selectedKey={formData.CategoryId}
                                     onChange={(_, opt) => setFormData({ ...formData, CategoryId: opt?.key as number })}
@@ -334,7 +387,7 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
                             <div className={styles.fieldHalf}>
                                 {/* Classification lookup from ClassificationType list */}
                                 <Dropdown
-                                    label="Classification"
+                                    label="Classification" required
                                     options={options.classification}
                                     selectedKey={formData.ClassificationId}
                                     onChange={(_, opt) => setFormData({ ...formData, ClassificationId: opt?.key as number })}
@@ -397,7 +450,7 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
                             </div>
                             <div className={styles.fieldHalf}>
                                 <Dropdown
-                                    label="Priority"
+                                    label="Priority" required
                                     options={options.priority}
                                     selectedKey={formData.PriorityId}
                                     onChange={(_, opt) => setFormData({ ...formData, PriorityId: opt?.key as number })}
@@ -409,7 +462,7 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
                         <div className={styles.fieldRow}>
                             <div className={styles.fieldThird}>
                                 <Dropdown
-                                    label="Status"
+                                    label="Status" required
                                     options={options.status}
                                     selectedKey={formData.StatusId}
                                     onChange={(_, opt) => setFormData({ ...formData, StatusId: opt?.key as number })}

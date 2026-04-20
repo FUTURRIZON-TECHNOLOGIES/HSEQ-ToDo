@@ -46,6 +46,22 @@ export interface IToDoItem {
     AssigneeInternalId?: number;
     AssigneeExternalId?: number;
     PersonNameId?: number;
+
+    // Dynamic 'Regarding' Fields
+    AuditInspection?: string;
+    Clients?: string;
+    ComplianceRegister?: string;
+    Employee?: string;
+    Incident?: string;
+    Leads?: string;
+    Meetings?: string;
+    Project?: string;
+    Proposal?: string;
+    Subcontractor?: string;
+    SubcontractorEmployee?: string;
+    Submission?: string;
+    TrainingInduction?: string;
+    VehiclePlant?: string;
 }
 
 export interface IAttachment {

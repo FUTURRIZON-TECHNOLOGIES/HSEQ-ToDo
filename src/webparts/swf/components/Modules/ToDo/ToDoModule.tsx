@@ -275,15 +275,19 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
 
     const handleSave = async (payload: any, mode: 'stay' | 'close' | 'new') => {
         try {
+            // Track the ID from the current selection if we are in edit mode
             let resultItemId = selectedItem?.Id;
-            // const isNew = !selectedItem;
+            const isUpdate = !!resultItemId;
 
-            if (selectedItem) {
-                await spService.updateToDoItem(selectedItem.Id!, payload);
+            if (isUpdate) {
+                // Perform Update
+                await spService.updateToDoItem(resultItemId!, payload);
             } else {
+                // Perform Add
                 const result = await spService.addToDoItem(payload);
                 resultItemId = result.data?.Id || result.Id;
 
+                // Handle pending attachments for new items
                 if (payload.PendingAttachments && payload.PendingAttachments.length > 0 && resultItemId) {
                     for (const file of payload.PendingAttachments) {
                         try {
@@ -295,11 +299,10 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
                 }
             }
             
-            // Refresh counts and current page
+            // Refresh counts and current page data
             const newTotalCount = await spService.getToDoTotalCount(searchQuery);
             setTotalCount(newTotalCount);
 
-            // Stay on current page to keep context, unless it's no longer valid
             let targetPage = currentPage;
             const maxPage = Math.max(1, Math.ceil(newTotalCount / PAGE_SIZE));
             if (targetPage > maxPage) targetPage = maxPage;
@@ -313,14 +316,23 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
             );
             setItems(refreshedData);
 
+            // Handle panel state and selection based on the save mode
             if (mode === 'close') {
                 setIsPanelOpen(false);
                 setSelectedItem(null);
             } else if (mode === 'new') {
                 setSelectedItem(null);
             } else if (mode === 'stay' && resultItemId) {
+                // Attempt to find the fresh item to keep the form updated
                 const freshItem = refreshedData.find(i => i.Id === resultItemId);
-                if (freshItem) setSelectedItem(freshItem);
+                if (freshItem) {
+                    setSelectedItem(freshItem);
+                } else if (isUpdate) {
+                    // If refresh didn't return the item but we were updating, 
+                    // ensure we at least keep the current ID in state to prevent duplicates on next save
+                    // We can patch the existing selection with the payload values
+                    setSelectedItem(prev => prev ? { ...prev, ...payload } : null);
+                }
             }
         } catch (e) {
             console.error('Save failed', e);

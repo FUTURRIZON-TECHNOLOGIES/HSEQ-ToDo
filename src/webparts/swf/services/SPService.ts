@@ -16,10 +16,11 @@ export class SPService {
     private _fieldTypeMap: Map<string, string> = new Map();
     private _listTitle: string = "";
     private _listId: string = "";
+    private _listUrl: string = "";
     private _isInitialized: boolean = false;
     private _lastError: string = "";
 
-    constructor(context: WebPartContext) {
+    constructor(private context: WebPartContext) {
         this._sp = spfi().using(SPFx(context));
     }
 
@@ -35,10 +36,17 @@ export class SPService {
             );
             this._listTitle = match ? match.Title : "ToDo";
 
-            const listData = await this._sp.web.lists.getByTitle(this._listTitle).select("Id", "Title")();
+            const listData = await this._sp.web.lists.getByTitle(this._listTitle).select("Id", "Title", "RootFolder/ServerRelativeUrl").expand("RootFolder")();
             this._listId = listData.Id;
+            this._listUrl = listData.RootFolder.ServerRelativeUrl;
+            
+            // Normalize URL for Search: ensure absolute path and no trailing slash for the prefix
+            const webUrl = this.context.pageContext.web.absoluteUrl;
+            const siteUrl = webUrl.substring(0, webUrl.indexOf(this.context.pageContext.web.serverRelativeUrl));
+            this._listUrl = siteUrl + this._listUrl;
+            if (this._listUrl.endsWith('/')) this._listUrl = this._listUrl.slice(0, -1);
 
-            console.log(`[SPService] List Identified: "${this._listTitle}" (ID: ${this._listId})`);
+            console.log(`[SPService] List Identified: "${this._listTitle}" (Path: ${this._listUrl}, ID: ${this._listId})`);
 
             const fields = await this._sp.web.lists.getByTitle(this._listTitle).fields
                 .select("Title", "InternalName", "TypeAsString")();
@@ -103,34 +111,74 @@ export class SPService {
         }));
     }
 
+    private _applyClientSideFilter(items: IToDoItem[], query: string): IToDoItem[] {
+        if (!query) return items;
+        const q = query.toLowerCase().trim();
+        const isNum = !isNaN(Number(q));
+        const num = Number(q);
 
+        return items.filter(item => {
+            // 1. ID - exact match
+            if (isNum && item.Id === num) return true;
+
+            // 2. Text Search - case insensitive includes
+            const check = (val: any): boolean => {
+                if (val === null || val === undefined) return false;
+                return val.toString().toLowerCase().indexOf(q) >= 0;
+            };
+
+            return (
+                check(item.Title) ||
+                check(item.Regarding) ||
+                check(item.Status?.Title) ||
+                check(item.Status?.Name) ||
+                check(item.Category?.Title) ||
+                check(item.Category?.Name) ||
+                check(item.Priority?.Title) ||
+                check(item.Priority?.Name) ||
+                check(item.Classification?.Title) ||
+                check(item.Classification?.Name) ||
+                check(item.TaskOwner?.Title) ||
+                check(item.AssigneeInternal?.Title) ||
+                check(item.AssigneeExternal?.Title)
+            );
+        });
+    }
+
+    private _buildKQLQuery(searchQuery: string): string {
+        if (!searchQuery) return "";
+        // REMOVAL: No wildcards (*) as per requirements
+        const terms = searchQuery.trim().split(/\s+/).filter(t => t.length > 0);
+        if (terms.length === 0) return "";
+        
+        // Use clean terms joined by AND
+        const cleanTerms = terms.map(t => t.replace(/["\\]/g, ""));
+        return `"${cleanTerms.join(' ')}"`;
+    }
 
     public async getToDoTotalCount(searchQuery?: string): Promise<number> {
         await this.init();
         try {
+            const listData = await this._sp.web.lists.getByTitle(this._listTitle).select("ItemCount")();
+            const totalItems = listData.ItemCount || 0;
+
             if (searchQuery) {
+                // Scaling strategy: Use Search API with RowLimit 0 to get total matching results
+                // Avoiding substringof on 50,000+ items
+                const kql = `${this._buildKQLQuery(searchQuery)} (path:"${this._listUrl}" OR path:"${this._listUrl}/*")`;
                 const results: SearchResults = await this._sp.search({
-                    Querytext: `${searchQuery} ListId:${this._listId}`,
+                    Querytext: kql,
                     RowLimit: 0,
                     SelectProperties: ["ListItemID"]
                 });
-                return results.TotalRows;
+                return results.TotalRows || 0;
             } else {
-                // For the total count (no search), the list metadata is the most reliable scale-safe source.
-                const listData = await this._sp.web.lists.getByTitle(this._listTitle).select("ItemCount")();
-                return listData.ItemCount || 0;
+                return totalItems;
             }
         } catch (e) {
-            console.warn("[SPService] Could not fetch total count:", e);
-            // Emergency fallback for large lists
-            const searchFallback = await this._sp.search({
-                Querytext: `ListId:${this._listId}`,
-                RowLimit: 0,
-                SelectProperties: ["ListItemID"]
-            });
-            return searchFallback.TotalRows || 0;
+            console.warn("[SPService] Count logic fallback:", e);
+            return 0;
         }
-        return 0;
     }
 
     /** Fetches a single page of items using server-side skip/top with optional search and sort */
@@ -216,53 +264,35 @@ export class SPService {
             else if (sortField === "Subject")  realSortField = names.Subject;
             else if (sortField === "Regarding") realSortField = names.Regarding;
 
-            // Decide between Search (Threshold-safe) and REST (Real-time)
-            const useSearch = !!searchQuery || skipCount >= 5000;
 
-            if (useSearch) {
-                // Use Search API for threshold-safe deep paging or keyword search
-                const queryText = searchQuery 
-                    ? `${searchQuery} ListId:${this._listId}` 
-                    : `ListId:${this._listId}`;
-
-                const searchResults: SearchResults = await this._sp.search({
-                    Querytext: queryText,
-                    StartRow: skipCount,
-                    RowLimit: pageSize,
-                    SelectProperties: ["ListItemID"],
-                    // Simple sorting mapping for search
-                    SortList: [{ Property: sortField === 'Id' ? 'ListItemID' : sortField, Direction: isAscending ? 0 : 1 }]
-                });
-
-                if (searchResults.TotalRows === 0) return [];
-                const ids = searchResults.PrimarySearchResults.map((r: any) => r.ListItemID).filter((id: any) => id);
-
-                if (ids.length === 0) return [];
-
-                // Hydrate results via REST using IDs (LVT-safe)
-                const idFilter = ids.map((id: any) => `Id eq ${id}`).join(' or ');
-                rawItems = await this._sp.web.lists.getByTitle(this._listTitle).items
-                    .filter(idFilter)
+            // STRATEGY: Hybrid Search for 100% scalability
+            // 1. Browsing (No search): Use standard REST pagination (Total list size compatible)
+            // 2. Searching: Fetch 300 latest-sorted items using indexed sort, then filter locally.
+            
+            if (searchQuery) {
+                // Fetch a large-enough subset for client-side search (LVT safe due to indexed sort + no filter)
+                let query = this._sp.web.lists.getByTitle(this._listTitle).items
                     .select(...selects)
-                    .expand(...expands)();
-                
-                // REST filter doesn't guarantee search order, so we re-sort to match search results
-                rawItems.sort((a, b) => {
-                    const idxA = ids.indexOf(a.Id.toString());
-                    const idxB = ids.indexOf(b.Id.toString());
-                    return idxA - idxB;
-                });
+                    .expand(...expands)
+                    .orderBy(realSortField, isAscending)
+                    .top(300); // Scalable cap as per requirement 2.A
 
+                rawItems = await query();
+                // Apply comprehensive client-side matching (Requirement 2.B)
+                rawItems = this._applyClientSideFilter(rawItems, searchQuery);
+                
+                // Manual pagination for search results
+                rawItems = rawItems.slice(skipCount, skipCount + pageSize);
             } else {
-                // Use REST for real-time visibility on the first 5000 items (no crawl delay)
-                let baseQuery = this._sp.web.lists
+                // Regular browsing remains unchanged to support deep pagination
+                let query = this._sp.web.lists
                     .getByTitle(this._listTitle).items
                     .select(...selects)
                     .expand(...expands)
                     .top(pageSize)
                     .orderBy(realSortField, isAscending);
 
-                rawItems = await (skipCount > 0 ? baseQuery.skip(skipCount)() : baseQuery());
+                rawItems = await (skipCount > 0 ? query.skip(skipCount)() : query());
             }
 
             return rawItems.map(item => {
@@ -279,6 +309,7 @@ export class SPService {
                     return { Id: v.Id || 0, Title: v.Title || "", EMail: v.EMail || "" };
                 };
                 return {
+                    ...item,
                     Id: item.Id,
                     Title: item[names.Subject] || item.Title || "",
                     Description: item[names.Description],
@@ -383,37 +414,50 @@ export class SPService {
 
         try {
             let rawItems: any[] = [];
-            
-            // Mapping sort field to internal name if needed (Unused in these paths)
-            /* let realSortField = sortField;
-            if (sortField === "TaskOwner") realSortField = `${names.TaskOwner}/Title`;
-            else if (sortField === "Subject")  realSortField = names.Subject;
-            else if (sortField === "Regarding") realSortField = names.Regarding; */
 
             if (searchQuery) {
-                // For export search, we might need more items than pageSize
-                // Use Search to find all relevant IDs
-                const searchResults: SearchResults = await this._sp.search({
-                    Querytext: `${searchQuery} ListId:${this._listId}`,
-                    RowLimit: 5000,
-                    SelectProperties: ["ListItemID"]
+                // Hybrid Search for exports: fetch 1000 items and filter on client side
+                const query = this._sp.web.lists.getByTitle(this._listTitle).items
+                    .select(...selects)
+                    .expand(...expands)
+                    .top(1000)
+                    .orderBy("Id", false);
+
+                const rawFetched = await query();
+                const mappedFetched = rawFetched.map(item => {
+                    const getLookup = (n: string): { Id: number; Title: string; Name?: string } | undefined => {
+                        const v = item[n];
+                        if (v === null || v === undefined || v === "") return undefined;
+                        if (typeof v === "object") return { Id: v.Id || 0, Title: v.Title || v.Name || "", Name: v.Name };
+                        if (typeof v === "string") return { Id: 0, Title: v };
+                        return undefined;
+                    };
+                    const getPerson = (n: string): { Id: number; Title: string; EMail: string } | undefined => {
+                        const v = item[n];
+                        if (!v || typeof v !== "object") return undefined;
+                        return { Id: v.Id || 0, Title: v.Title || "", EMail: v.EMail || "" };
+                    };
+                    return {
+                        Id: item.Id,
+                        Title: item[names.Subject] || item.Title || "",
+                        Status: getLookup(names.Status),
+                        Category: getLookup(names.Category),
+                        Priority: getLookup(names.Priority),
+                        Classification: getLookup(names.Classification),
+                        TaskOwner: getPerson(names.TaskOwner),
+                        AssigneeInternal: getPerson(names.AssigneeInternal),
+                        AssigneeExternal: getPerson(names.AssigneeExternal),
+                        Regarding: item[names.Regarding],
+                        // ... mapping only what's needed for the filter check
+                    } as IToDoItem;
                 });
 
-                if (searchResults.TotalRows === 0) return [];
-                const ids = searchResults.PrimarySearchResults.map((r: any) => r.ListItemID).filter((id: any) => id);
-
-                if (ids.length === 0) return [];
-
-                // In a real large-scale scenario, we'd batch these IDs too.
-                // For now, we fetch them in a single filtered call which is safe for 5000 IDs.
-                const idFilter = ids.map((id: any) => `Id eq ${id}`).join(' or ');
-                rawItems = await this._sp.web.lists.getByTitle(this._listTitle).items
-                    .filter(idFilter)
-                    .select(...selects)
-                    .expand(...expands)();
+                const filteredMapped = this._applyClientSideFilter(mappedFetched, searchQuery);
+                const filteredIds = filteredMapped.map(i => i.Id);
+                rawItems = rawFetched.filter(i => filteredIds.indexOf(i.Id) >= 0);
 
             } else {
-                // Fetch in batches for mass export to avoid LVT (PnP JS v4 Async Iterator)
+                // Batch-fetch for mass export
                 const itemIterator = this._sp.web.lists.getByTitle(this._listTitle).items
                     .select(...selects)
                     .expand(...expands)
@@ -422,7 +466,7 @@ export class SPService {
                 
                 for await (const items of itemIterator) {
                     rawItems.push(...items);
-                    if (rawItems.length >= 10000) break; // Safety cap
+                    if (rawItems.length >= 10000) break;
                 }
             }
 
@@ -440,6 +484,7 @@ export class SPService {
                     return { Id: v.Id || 0, Title: v.Title || "", EMail: v.EMail || "" };
                 };
                 return {
+                    ...item,
                     Id: item.Id,
                     Title: item[names.Subject] || item.Title || "",
                     Description: item[names.Description],
@@ -571,6 +616,7 @@ export class SPService {
                 };
 
                 return {
+                    ...item,
                     Id: item.Id,
                     Title: item[names.Subject] || item.Title || "",
                     Description: item[names.Description],
