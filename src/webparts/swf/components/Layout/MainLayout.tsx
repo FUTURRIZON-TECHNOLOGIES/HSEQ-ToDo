@@ -1,18 +1,13 @@
 import * as React from 'react';
 import styles from './MainLayout.module.scss';
 import Sidebar from './Sidebar';
+import { getModuleById } from '../../../../common/config/ModuleRegistry';
 
 export interface IMainLayoutProps {
     activeModule: string;
     onModuleChange: (module: string) => void;
     children?: React.ReactNode;
 }
-
-const MODULE_LABELS: Record<string, string> = {
-    ToDo: 'To Do',
-    Compliance: 'Compliance Register',
-    Projects: 'Projects'
-};
 
 const MainLayout: React.FC<IMainLayoutProps> = ({ children, activeModule, onModuleChange }) => {
     const [isMobileOpen, setIsMobileOpen] = React.useState(false);
@@ -21,6 +16,9 @@ const MainLayout: React.FC<IMainLayoutProps> = ({ children, activeModule, onModu
         onModuleChange(module);
         setIsMobileOpen(false);
     };
+
+    const moduleInfo = getModuleById(activeModule);
+    const label = moduleInfo ? moduleInfo.label : activeModule;
 
     return (
         <div className={styles.mainLayout}>
@@ -35,7 +33,7 @@ const MainLayout: React.FC<IMainLayoutProps> = ({ children, activeModule, onModu
             {/* ── Sidebar ── */}
             <div className={`${styles.sidebarWrapper} ${isMobileOpen ? styles.mobileOpen : ''}`}>
                 <Sidebar
-                    activeItem={MODULE_LABELS[activeModule] || activeModule}
+                    activeItem={activeModule}
                     onItemClick={handleItemClick}
                 />
             </div>
@@ -58,7 +56,7 @@ const MainLayout: React.FC<IMainLayoutProps> = ({ children, activeModule, onModu
                         <span className={styles.breadcrumbRoot}>ASP Assist Group</span>
                         <span className={styles.breadcrumbSep}>›</span>
                         <span className={styles.breadcrumbCurrent}>
-                            {MODULE_LABELS[activeModule] || activeModule}
+                            {label}
                         </span>
                     </div>
                 </header>

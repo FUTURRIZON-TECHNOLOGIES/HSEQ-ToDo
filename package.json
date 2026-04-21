@@ -7,9 +7,12 @@
   },
   "main": "lib/index.js",
   "scripts": {
-    "build": "gulp bundle",
-    "clean": "gulp clean",
-    "test": "gulp test"
+    "build": "node --max-old-space-size=8192 ./node_modules/gulp/bin/gulp.js build",
+    "bundle": "node --max-old-space-size=8192 ./node_modules/gulp/bin/gulp.js bundle",
+    "clean": "node --max-old-space-size=4096 ./node_modules/gulp/bin/gulp.js clean",
+    "serve": "node --max-old-space-size=8192 ./node_modules/gulp/bin/gulp.js serve",
+    "test": "gulp test",
+    "start": "npm run serve"
   },
   "dependencies": {
     "@fluentui/react": "^8.106.4",

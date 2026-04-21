@@ -1,7 +1,7 @@
 import * as React from 'react';
-import { IToDoItem } from '../../../models/IToDoItem';
-import { SPService } from '../../../services/SPService';
-import GenericGrid from '../../Shared/GenericGrid';
+import { IToDoItem } from '../../webparts/swf/models/IToDoItem';
+import { SPService } from '../../webparts/swf/services/SPService';
+import GenericGrid from '../../webparts/swf/components/Shared/GenericGrid';
 import { IColumn, Panel, PanelType, Icon } from '@fluentui/react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import ToDoForm from './ToDoForm';
@@ -30,7 +30,7 @@ const PAGE_SIZE = 100;
 const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
     const [items, setItems] = React.useState<IToDoItem[]>([]);
     const [loading, setLoading] = React.useState(true);
-    const [selectedItem, setSelectedItem] = React.useState<IToDoItem | null>(null);
+    const [selectedItem, setSelectedItem] = React.useState<IToDoItem | undefined>(undefined);
     const [isPanelOpen, setIsPanelOpen] = React.useState(false);
     const [formVersion, setFormVersion] = React.useState(0);
 
@@ -225,7 +225,7 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
         setLoading(true);
         try {
             const allData = await spService.getToDoItemsFiltered(searchQuery, sortConfig.field, sortConfig.isAscending);
-            const { ExportService } = await import('../../../services/ExportService');
+            const { ExportService } = await import('../../webparts/swf/services/ExportService');
             ExportService.exportToExcel(flattenItems(allData), 'ASP_Assist_Group_Tasks');
         } finally { setLoading(false); }
     };
@@ -234,7 +234,7 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
         setLoading(true);
         try {
             const allData = await spService.getToDoItemsFiltered(searchQuery, sortConfig.field, sortConfig.isAscending);
-            const { ExportService } = await import('../../../services/ExportService');
+            const { ExportService } = await import('../../webparts/swf/services/ExportService');
             ExportService.exportToCSV(flattenItems(allData), 'ASP_Assist_Group_Tasks');
         } finally { setLoading(false); }
     };
@@ -243,7 +243,7 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
         setLoading(true);
         try {
             const allData = await spService.getToDoItemsFiltered(searchQuery, sortConfig.field, sortConfig.isAscending);
-            const { ExportService } = await import('../../../services/ExportService');
+            const { ExportService } = await import('../../webparts/swf/services/ExportService');
             const flattened = flattenItems(allData);
             const headers = Object.keys(flattened[0] || {});
             ExportService.exportToPDF(flattened, 'ASP Assist Group Tasks', headers, headers);
@@ -254,7 +254,7 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
         setLoading(true);
         try {
             const allData = await spService.getToDoItemsFiltered(searchQuery, sortConfig.field, sortConfig.isAscending);
-            const { ExportService } = await import('../../../services/ExportService');
+            const { ExportService } = await import('../../webparts/swf/services/ExportService');
             const flattened = flattenItems(allData);
             const headers = Object.keys(flattened[0] || {});
             await ExportService.exportToZip(flattened, 'ASP_Assist_Group_Tasks', headers, headers);
@@ -272,7 +272,7 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
     };
 
     const handleNew = () => { 
-        setSelectedItem(null); 
+        setSelectedItem(undefined); 
         setFormVersion(prev => prev + 1);
         setIsPanelOpen(true); 
     };
@@ -324,9 +324,9 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
             // Handle panel state and selection based on the save mode
             if (mode === 'close') {
                 setIsPanelOpen(false);
-                setSelectedItem(null);
+                setSelectedItem(undefined);
             } else if (mode === 'new') {
-                setSelectedItem(null);
+                setSelectedItem(undefined);
                 setFormVersion(prev => prev + 1);
             } else if (mode === 'stay' && resultItemId) {
                 // Attempt to find the fresh item to keep the form updated

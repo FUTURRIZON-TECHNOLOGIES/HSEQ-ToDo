@@ -13,17 +13,17 @@ import {
     MessageBar,
     MessageBarType
 } from '@fluentui/react';
-import { IToDoItem } from '../../../models/IToDoItem';
-import { SPService } from '../../../services/SPService';
+import { IToDoItem } from '../../webparts/swf/models/IToDoItem';
+import { SPService } from '../../webparts/swf/services/SPService';
 import { PeoplePicker, PrincipalType } from '@pnp/spfx-controls-react/lib/PeoplePicker';
 import { RichText } from '@pnp/spfx-controls-react/lib/RichText';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
-import AttachmentControl from '../../Shared/AttachmentControl';
+import AttachmentControl from '../../webparts/swf/components/Shared/AttachmentControl';
 import styles from './ToDoForm.module.scss';
 import { REGARDING_DYNAMIC_FIELDS, getRegardingFieldLabel } from './RegardingConfig';
 
 export interface IToDoFormProps {
-    item: IToDoItem | null;
+    item: IToDoItem | undefined;
     spService: SPService;
     context: WebPartContext;
     onSave: (payload: any, mode?: 'stay' | 'close' | 'new') => void;
@@ -49,7 +49,7 @@ const Section: React.FC<{ title: string; icon: string; defaultOpen?: boolean; ch
 };
 
 // ── Helper: build initial formData from item (ensures IDs are populated) ─────
-const buildFormData = (item: IToDoItem | null): IToDoItem => {
+const buildFormData = (item: IToDoItem | undefined): IToDoItem => {
     if (!item) return { Title: '', CompletedPercent: 0 };
     return {
         ...item,
@@ -77,7 +77,7 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
     }>({ status: [], category: [], classification: [], priority: [], regarding: [] });
     const [loadingOptions, setLoadingOptions] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
-    const [error, setError] = React.useState<string | null>(null);
+    const [error, setError] = React.useState<string | undefined>(undefined);
 
     // ── Dynamic Field State for 'Regarding' ──────────────
     const [dynamicFieldKey, setDynamicFieldKey] = React.useState<string>("");
@@ -105,7 +105,7 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
         setFormData(buildFormData(item));
         setPendingAttachments([]);
         setAttachments([]);
-        setError(null);
+        setError(undefined);
 
         // ── Resolve and Set Dynamic Field for Edit mode ──
         if (item?.Regarding) {
@@ -162,7 +162,7 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
             }
         }
 
-        setError(null);
+        setError(undefined);
         setSaving(true);
         const getInternal = (displayName: string, fallback: string) =>
             (spService as any).getInternalName(displayName, fallback);
@@ -310,7 +310,7 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
             {error && (
                 <MessageBar
                     messageBarType={MessageBarType.error}
-                    onDismiss={() => setError(null)}
+                    onDismiss={() => setError(undefined)}
                     className={styles.errorBar}
                 >
                     {error}
