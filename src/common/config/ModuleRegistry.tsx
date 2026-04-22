@@ -24,6 +24,13 @@ export const ModuleRegistry: IModuleInfo[] = [
         component: WorksiteHacSwmsModule
     },
     {
+        id: 'ActivityTaskRegister',
+        label: 'Activity & Task Register',
+        iconName: 'TaskGroup',
+        group: 'HSEQ',
+        component: React.lazy(() => import('../../modules/activityTaskRegister/ActivityTaskRegisterModule'))
+    },
+    {
         id: 'Compliance',
         label: 'Compliance Register',
         iconName: 'ReadingMode',

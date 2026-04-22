@@ -11,7 +11,11 @@ const Swf: React.FC<ISwfProps> = ({ context }) => {
         
         if (moduleInfo && moduleInfo.component) {
             const ModuleComponent = moduleInfo.component;
-            return <ModuleComponent context={context} />;
+            return (
+                <React.Suspense fallback={<div>Loading module...</div>}>
+                    <ModuleComponent context={context} />
+                </React.Suspense>
+            );
         }
 
         return (
