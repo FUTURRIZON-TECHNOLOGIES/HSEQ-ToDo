@@ -1,0 +1,28 @@
+Build target: DEBUG
+[11:56:29] Using gulpfile C:\webparts\HSEQ\HSEQ-SWF\gulpfile.js
+[11:56:29] Starting 'build'...
+[[90m11:56:29[39m] Starting gulp
+[[90m11:56:29[39m] Starting subtask '[36mpre-copy[39m'...
+[[90m11:56:29[39m] Finished subtask '[36mpre-copy[39m' after [35m16 ms[39m
+[[90m11:56:29[39m] Starting subtask '[36mcopy-static-assets[39m'...
+[[90m11:56:29[39m] Starting subtask '[36msass[39m'...
+[[90m11:56:30[39m] [33mWarning - [[36msass[33m] The local CSS class 'ql-blank' is not camelCase and will not be type-safe.[39m
+[[90m11:56:30[39m] Finished subtask '[36msass[39m' after [35m719 ms[39m
+[[90m11:56:30[39m] Starting subtask '[36mlint[39m'...
+[[90m11:56:30[39m] [[36mlint[39m] eslint version: 8.57.0
+[[90m11:56:30[39m] Starting subtask '[36mtsc[39m'...
+[[90m11:56:30[39m] [[36mtsc[39m] typescript version: 4.7.4
+[[90m11:56:30[39m] Finished subtask '[36mcopy-static-assets[39m' after [35m801 ms[39m
+[[90m11:56:34[39m] [31mError - [[36mtsc[31m] [31msrc/webparts/swf/components/Modules/ToDo/ToDoForm.tsx(88,50): error TS2554: Expected 2 arguments, but got 1.[31m[39m
+[[90m11:56:34[39m] [31mError - [[36mtsc[31m] [31msrc/webparts/swf/components/Modules/ToDo/ToDoForm.tsx(165,29): error TS2554: Expected 3 arguments, but got 2.[31m[39m
+[[90m11:56:34[39m] [31mError - [[36mtsc[31m] [31msrc/webparts/swf/components/Modules/ToDo/ToDoForm.tsx(173,29): error TS2554: Expected 3 arguments, but got 2.[31m[39m
+[[90m11:56:34[39m] [31mError - [[36mtsc[31m] [31msrc/webparts/swf/components/Modules/ToDo/ToDoModule.tsx(226,45): error TS2339: Property 'getToDoItemsFiltered' does not exist on type 'SPService'.[31m[39m
+[[90m11:56:34[39m] [31mError - [[36mtsc[31m] [31msrc/webparts/swf/components/Modules/ToDo/ToDoModule.tsx(235,45): error TS2339: Property 'getToDoItemsFiltered' does not exist on type 'SPService'.[31m[39m
+[[90m11:56:34[39m] [31mError - [[36mtsc[31m] [31msrc/webparts/swf/components/Modules/ToDo/ToDoModule.tsx(244,45): error TS2339: Property 'getToDoItemsFiltered' does not exist on type 'SPService'.[31m[39m
+[[90m11:56:34[39m] [31mError - [[36mtsc[31m] [31msrc/webparts/swf/components/Modules/ToDo/ToDoModule.tsx(255,45): error TS2339: Property 'getToDoItemsFiltered' does not exist on type 'SPService'.[31m[39m
+[[90m11:56:34[39m] [31mError - '[36mtsc[31m' [31msub task errored after[31m [35m4.34 s[31m [39m
+[31m exited with code 2[39m
+[11:56:34] 'build' errored after 5.12 s
+About to exit with code: 1
+Process terminated before summary could be written, possible error in async code not continuing!
+Trying to exit with exit code 1

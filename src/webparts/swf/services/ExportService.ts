@@ -7,7 +7,7 @@ const JSZip = require('jszip');
 export class ExportService {
 
     // ─── Excel ────────────────────────────────────────────────────────────────
-    public static exportToExcel(data: any[], fileName: string): void {
+    public static exportToExcel(data: Record<string, unknown>[], fileName: string): void {
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
@@ -15,7 +15,7 @@ export class ExportService {
     }
 
     // ─── CSV ──────────────────────────────────────────────────────────────────
-    public static exportToCSV(data: any[], fileName: string): void {
+    public static exportToCSV(data: Record<string, unknown>[], fileName: string): void {
         const ws = XLSX.utils.json_to_sheet(data);
         const csv = XLSX.utils.sheet_to_csv(ws);
         ExportService._download(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `${fileName}.csv`);
@@ -23,7 +23,7 @@ export class ExportService {
 
     // ─── PDF ──────────────────────────────────────────────────────────────────
     public static exportToPDF(
-        data: any[],
+        data: Record<string, unknown>[],
         fileName: string,
         columnHeaders: string[],
         columnKeys: string[]
@@ -77,7 +77,7 @@ export class ExportService {
 
     // ─── ZIP (Excel + CSV + PDF bundled) ─────────────────────────────────────
     public static async exportToZip(
-        data: any[],
+        data: Record<string, unknown>[],
         fileName: string,
         columnHeaders: string[],
         columnKeys: string[]

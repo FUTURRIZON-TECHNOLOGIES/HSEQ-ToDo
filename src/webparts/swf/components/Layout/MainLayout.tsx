@@ -9,6 +9,13 @@ export interface IMainLayoutProps {
     children?: React.ReactNode;
 }
 
+const MODULE_LABELS: Record<string, string> = {
+    ToDo: 'To Do',
+    Compliance: 'Compliance Register',
+    Projects: 'Projects',
+    TrainingInduction: 'Training & Inductions'
+};
+
 const MainLayout: React.FC<IMainLayoutProps> = ({ children, activeModule, onModuleChange }) => {
     const [isMobileOpen, setIsMobileOpen] = React.useState(false);
 

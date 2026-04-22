@@ -8,6 +8,9 @@ import ToDoForm from './ToDoForm';
 
 export interface IToDoModuleProps {
     context: WebPartContext;
+    filterRecordId?: number; // Filter by Training Induction ID
+    defaultRegarding?: string;
+    isSubGrid?: boolean;
 }
 
 // ── Comprehensive Export Definitions ──────────────────────────────────────────
@@ -27,7 +30,7 @@ const stripHtml = (html: string | undefined): string => {
 
 const PAGE_SIZE = 100;
 
-const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
+const ToDoModule: React.FC<IToDoModuleProps> = ({ context, filterRecordId, defaultRegarding, isSubGrid }) => {
     const [items, setItems] = React.useState<IToDoItem[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [selectedItem, setSelectedItem] = React.useState<IToDoItem | undefined>(undefined);
@@ -46,12 +49,22 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
 
     const spService = React.useMemo(() => new SPService(context), [context]);
 
+    // Build the Training & Induction lookup filter AFTER init so internal names are resolved
+    const buildExtraFilter = React.useCallback(async (): Promise<string> => {
+        if (!filterRecordId) return "";
+        await spService.init("ToDo");
+        const tiName = spService.getInternalName("ToDo", "Training & Induction", "TrainingInduction");
+        return `${tiName}Id eq ${filterRecordId}`;
+    }, [spService, filterRecordId]);
+
     const fetchData = React.useCallback(async (page: number, search: string, sortField: string, isAsc: boolean) => {
         setLoading(true);
         try {
+            const extraFilter = await buildExtraFilter();
+
             const [data, total] = await Promise.all([
-                spService.getToDoItemsPaged(page, PAGE_SIZE, search, sortField, isAsc),
-                spService.getToDoTotalCount(search)
+                spService.getToDoItemsPaged(page, PAGE_SIZE, search, sortField, isAsc, extraFilter),
+                spService.getToDoTotalCount(search, extraFilter)
             ]);
             const mappedItems = data.map(item => ({
                 ...item,
@@ -67,16 +80,16 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
         } finally {
             setLoading(false);
         }
-    }, [spService]);
+    }, [spService, buildExtraFilter]);
 
     React.useEffect(() => {
         fetchData(currentPage, searchQuery, sortConfig.field, sortConfig.isAscending);
     }, [currentPage, searchQuery, sortConfig]);
 
     // Keep a stable "refresh current page" reference for CRUD callbacks
-    const fetchItems = React.useCallback(() => 
-        fetchData(currentPage, searchQuery, sortConfig.field, sortConfig.isAscending), 
-    [fetchData, currentPage, searchQuery, sortConfig]);
+    const fetchItems = React.useCallback(() =>
+        fetchData(currentPage, searchQuery, sortConfig.field, sortConfig.isAscending),
+        [fetchData, currentPage, searchQuery, sortConfig]);
 
     // ── Grid Column Definitions ───────────────────────────────────────────────
     const columns: IColumn[] = [
@@ -271,10 +284,19 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
         }
     };
 
-    const handleNew = () => { 
-        setSelectedItem(undefined); 
+    /*const handleNew = () => { 
+       // setSelectedItem(undefined); 
+       
+    };*/
+    const handleNew = () => {
+        setSelectedItem({
+            Title: '',
+            Regarding: defaultRegarding || '',
+            // We'll pass the ID through a custom property that the form can pick up
+            ...(filterRecordId ? { TrainingInductionId: filterRecordId } : {})
+        } as any);
         setFormVersion(prev => prev + 1);
-        setIsPanelOpen(true); 
+        setIsPanelOpen(true);
     };
     const handleEdit = (item: IToDoItem) => { setSelectedItem(item); setIsPanelOpen(true); };
 
@@ -287,142 +309,148 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
             if (isUpdate) {
                 // Perform Update
                 await spService.updateToDoItem(resultItemId!, payload);
-            } else {
-                // Perform Add
-                const result = await spService.addToDoItem(payload);
-                resultItemId = result.data?.Id || result.Id;
+                if (selectedItem?.Id) {
+                    await spService.updateToDoItem(selectedItem.Id, payload);
+                } else {
+                    // Perform Add
+                    const result = await spService.addToDoItem(payload);
+                    resultItemId = result.data?.Id || result.Id;
 
-                // Handle pending attachments for new items
-                if (payload.PendingAttachments && payload.PendingAttachments.length > 0 && resultItemId) {
-                    for (const file of payload.PendingAttachments) {
-                        try {
-                            await spService.uploadAttachment(resultItemId, file);
-                        } catch (err) {
-                            console.error('Failed to upload pending attachment', err);
+                    // Handle pending attachments for new items
+                    if (payload.PendingAttachments && payload.PendingAttachments.length > 0 && resultItemId) {
+                        for (const file of payload.PendingAttachments) {
+                            try {
+                                await spService.uploadAttachment(resultItemId, file);
+                            } catch (err) {
+                                console.error('Failed to upload pending attachment', err);
+                            }
                         }
                     }
                 }
-            }
-            
-            // Refresh counts and current page data
-            const newTotalCount = await spService.getToDoTotalCount(searchQuery);
-            setTotalCount(newTotalCount);
 
-            let targetPage = currentPage;
-            const maxPage = Math.max(1, Math.ceil(newTotalCount / PAGE_SIZE));
-            if (targetPage > maxPage) targetPage = maxPage;
+                // Refresh counts and current page data
+                const newTotalCount = await spService.getToDoTotalCount(searchQuery);
+                // Refresh counts and current page (using same filter so counts stay consistent)
+                const extraFilter = await buildExtraFilter();
+                const newTotalCount = await spService.getToDoTotalCount(searchQuery, extraFilter);
+                setTotalCount(newTotalCount);
 
-            const refreshedData = await spService.getToDoItemsPaged(
-                targetPage, 
-                PAGE_SIZE, 
-                searchQuery, 
-                sortConfig.field, 
-                sortConfig.isAscending
-            );
-            setItems(refreshedData);
+                let targetPage = currentPage;
+                const maxPage = Math.max(1, Math.ceil(newTotalCount / PAGE_SIZE));
+                if (targetPage > maxPage) targetPage = maxPage;
 
-            // Handle panel state and selection based on the save mode
-            if (mode === 'close') {
-                setIsPanelOpen(false);
-                setSelectedItem(undefined);
-            } else if (mode === 'new') {
-                setSelectedItem(undefined);
-                setFormVersion(prev => prev + 1);
-            } else if (mode === 'stay' && resultItemId) {
-                // Attempt to find the fresh item to keep the form updated
-                const freshItem = refreshedData.find(i => i.Id === resultItemId);
-                if (freshItem) {
-                    setSelectedItem(freshItem);
-                } else {
-                    // For both Add and Update, if freshItem is not found (search lag),
-                    // ensure we track the ID so the form transitions to Edit mode.
-                    // If isUpdate was false, we use the new ID from SharePoint result.
-                    setSelectedItem(prev => ({ 
-                        ...((prev || {}) as any), 
-                        ...payload, 
-                        Id: resultItemId 
-                    } as IToDoItem));
+                const refreshedData = await spService.getToDoItemsPaged(
+                    targetPage,
+                    PAGE_SIZE,
+                    searchQuery,
+                    sortConfig.field,
+                    sortConfig.isAscending,
+                    extraFilter
+                );
+                setItems(refreshedData);
+
+                // Handle panel state and selection based on the save mode
+                if (mode === 'close') {
+                    setIsPanelOpen(false);
+                    setSelectedItem(undefined);
+                } else if (mode === 'new') {
+                    setSelectedItem(undefined);
+                    setFormVersion(prev => prev + 1);
+                } else if (mode === 'stay' && resultItemId) {
+                    // Attempt to find the fresh item to keep the form updated
+                    const freshItem = refreshedData.find(i => i.Id === resultItemId);
+                    if (freshItem) {
+                        setSelectedItem(freshItem);
+                    } else {
+                        // For both Add and Update, if freshItem is not found (search lag),
+                        // ensure we track the ID so the form transitions to Edit mode.
+                        // If isUpdate was false, we use the new ID from SharePoint result.
+                        setSelectedItem(prev => ({
+                            ...((prev || {}) as any),
+                            ...payload,
+                            Id: resultItemId
+                        } as IToDoItem));
+                    }
                 }
-            }
-        } catch (e) {
-            console.error('Save failed', e);
-            alert('Save failed. Check browser console for details.');
-        }
-    };
-    
-    const handleRefresh = async () => {
-        if (selectedItem?.Id) {
-            try {
-                // Fetch fresh copy from SharePoint
-                const items = await spService.getToDoItems();
-                const fresh = items.find(i => i.Id === selectedItem.Id);
-                if (fresh) setSelectedItem(fresh);
             } catch (e) {
-                console.error('Refresh failed', e);
+                console.error('Save failed', e);
+                alert('Save failed. Check browser console for details.');
             }
-        } else {
-            // On a new form, refresh simply clears the form
-            setFormVersion(prev => prev + 1);
-        }
+        };
+
+        const handleRefresh = async () => {
+            if (selectedItem?.Id) {
+                try {
+                    // Fetch fresh copy from SharePoint
+                    const items = await spService.getToDoItems();
+                    const fresh = items.find(i => i.Id === selectedItem.Id);
+                    if (fresh) setSelectedItem(fresh);
+                } catch (e) {
+                    console.error('Refresh failed', e);
+                }
+            } else {
+                // On a new form, refresh simply clears the form
+                setFormVersion(prev => prev + 1);
+            }
+        };
+
+        return (
+            <React.Fragment>
+                <GenericGrid
+                    items={items}
+                    columns={columns}
+                    loading={loading}
+                    onNew={handleNew}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onRefresh={fetchItems}
+                    onSearch={(term) => {
+                        setSearchQuery(term);
+                        setCurrentPage(1); // Reset to first page on search
+                    }}
+                    onExportExcel={handleExportExcel}
+                    onExportCSV={handleExportCSV}
+                    onExportPDF={handleExportPDF}
+                    onExportZip={handleExportZip}
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    totalCount={totalCount}
+                    pageSize={PAGE_SIZE}
+                    clientSidePagination={false}
+                    onPageChange={(page) => setCurrentPage(page)}
+                    sortField={sortConfig.field}
+                    isAscending={sortConfig.isAscending}
+                    onSort={(field, isAsc) => {
+                        setSortConfig({ field, isAscending: isAsc });
+                        setCurrentPage(1); // Reset to first page on sort change
+                    }}
+                />
+
+                <Panel
+                    isOpen={isPanelOpen}
+                    onDismiss={() => setIsPanelOpen(false)}
+                    type={PanelType.custom}
+                    customWidth="1100px"
+                    onRenderHeader={() => null}
+                    isLightDismiss={false}
+                    styles={{
+                        content: { padding: 0 },
+                        scrollableContent: { overflow: 'hidden' },
+                        commands: { display: 'none' }
+                    }}
+                >
+                    <ToDoForm
+                        key={`${selectedItem?.Id || 'new'}-${formVersion}`}
+                        item={selectedItem}
+                        spService={spService}
+                        context={context}
+                        onSave={handleSave}
+                        onRefresh={handleRefresh}
+                        onClose={() => setIsPanelOpen(false)}
+                    />
+                </Panel>
+            </React.Fragment>
+        );
     };
 
-    return (
-        <React.Fragment>
-            <GenericGrid
-                items={items}
-                columns={columns}
-                loading={loading}
-                onNew={handleNew}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-                onRefresh={fetchItems}
-                onSearch={(term) => {
-                    setSearchQuery(term);
-                    setCurrentPage(1); // Reset to first page on search
-                }}
-                onExportExcel={handleExportExcel}
-                onExportCSV={handleExportCSV}
-                onExportPDF={handleExportPDF}
-                onExportZip={handleExportZip}
-                currentPage={currentPage}
-                totalPages={totalPages}
-                totalCount={totalCount}
-                pageSize={PAGE_SIZE}
-                clientSidePagination={false}
-                onPageChange={(page) => setCurrentPage(page)}
-                sortField={sortConfig.field}
-                isAscending={sortConfig.isAscending}
-                onSort={(field, isAsc) => {
-                    setSortConfig({ field, isAscending: isAsc });
-                    setCurrentPage(1); // Reset to first page on sort change
-                }}
-            />
-
-            <Panel
-                isOpen={isPanelOpen}
-                onDismiss={() => setIsPanelOpen(false)}
-                type={PanelType.custom}
-                customWidth="1100px"
-                onRenderHeader={() => null}
-                isLightDismiss={false}
-                styles={{
-                    content: { padding: 0 },
-                    scrollableContent: { overflow: 'hidden' },
-                    commands: { display: 'none' }
-                }}
-            >
-                <ToDoForm
-                    key={`${selectedItem?.Id || 'new'}-${formVersion}`}
-                    item={selectedItem}
-                    spService={spService}
-                    context={context}
-                    onSave={handleSave}
-                    onRefresh={handleRefresh}
-                    onClose={() => setIsPanelOpen(false)}
-                />
-            </Panel>
-        </React.Fragment>
-    );
-};
-
-export default ToDoModule;
+    export default ToDoModule;

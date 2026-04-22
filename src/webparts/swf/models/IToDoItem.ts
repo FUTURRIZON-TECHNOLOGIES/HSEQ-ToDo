@@ -3,13 +3,14 @@ export interface IToDoItem {
     Title: string; // Subject
     Description?: string;
     Comment?: string;
-    
+
     // Lookups (Objects for display)
     Status?: { Id: number; Title: string; Name?: string };
     Category?: { Id: number; Title: string; Name?: string };
     Classification?: { Id: number; Title: string; Name?: string };
     Priority?: { Id: number; Title: string; Name?: string };
-    
+    TrainingInduction?: { Id: number; Title: string };
+
     // People (Objects for display)
     TaskOwner?: { Id: number; Title: string; EMail: string };
     AssigneeInternal?: { Id: number; Title: string; EMail: string };
@@ -28,7 +29,7 @@ export interface IToDoItem {
     CompletedPercent?: number; // Completed %
     EmailNotifications?: boolean;
     Resolution?: string;
-    
+
     // Metadata
     Created?: string;
     Author?: { Title: string };
@@ -46,6 +47,7 @@ export interface IToDoItem {
     AssigneeInternalId?: number;
     AssigneeExternalId?: number;
     PersonNameId?: number;
+    TrainingInductionId?: number;
 
     // Dynamic 'Regarding' Fields
     AuditInspection?: string;
@@ -60,7 +62,6 @@ export interface IToDoItem {
     Subcontractor?: string;
     SubcontractorEmployee?: string;
     Submission?: string;
-    TrainingInduction?: string;
     VehiclePlant?: string;
 }
 

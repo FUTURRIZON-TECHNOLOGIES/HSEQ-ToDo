@@ -18,10 +18,10 @@ export interface IGenericGridProps {
     columns: IColumn[];
     onNew?: () => void;
     onDelete?: (selectedItems: any[]) => void;
-    onExportExcel?: (items: any[]) => void;
-    onExportPDF?: (items: any[]) => void;
-    onExportCSV?: (items: any[]) => void;
-    onExportZip?: (items: any[]) => void;
+    onExportExcel?: (items: any[], isSelection?: boolean) => void;
+    onExportPDF?: (items: any[], isSelection?: boolean) => void;
+    onExportCSV?: (items: any[], isSelection?: boolean) => void;
+    onExportZip?: (items: any[], isSelection?: boolean) => void;
     onRefresh?: () => void;
     onEdit?: (item: any) => void;
     onSearch?: (term: string) => void;
@@ -75,6 +75,7 @@ const GenericGrid: React.FC<IGenericGridProps> = (props) => {
     }, [searchQuery]);
 
     React.useEffect(() => {
+        console.log(`[GenericGrid] Received ${props.items?.length || 0} items for grid:`, props.title);
         setFilteredItems(props.items);
         // Clear stale selection and scroll to top on every data change
         selection.setAllSelected(false);
@@ -107,7 +108,7 @@ const GenericGrid: React.FC<IGenericGridProps> = (props) => {
     }, [pagedItems]);
 
     const getExportTarget = (): any[] =>
-        selectionCount > 0 ? selection.getSelection() : filteredItems;
+        (selectionCount > 0 ? selection.getSelection() : filteredItems) || [];
 
     const commandItems: ICommandBarItemProps[] = [
         {
@@ -122,7 +123,7 @@ const GenericGrid: React.FC<IGenericGridProps> = (props) => {
             text: 'Edit',
             iconProps: { iconName: 'Edit' },
             disabled: selectionCount !== 1,
-            onClick: () => {
+            onClick: (): void => {
                 if (selectionCount === 1) props.onEdit?.(selection.getSelection()[0]);
             }
         },
@@ -131,7 +132,7 @@ const GenericGrid: React.FC<IGenericGridProps> = (props) => {
             text: 'Delete',
             iconProps: { iconName: 'Delete' },
             disabled: selectionCount === 0,
-            onClick: () => props.onDelete?.(selection.getSelection())
+            onClick: (): void => { if (props.onDelete) props.onDelete(selection.getSelection()); }
         },
         {
             key: 'export',
@@ -143,26 +144,26 @@ const GenericGrid: React.FC<IGenericGridProps> = (props) => {
                         key: 'excel',
                         text: 'Excel (.xlsx)',
                         iconProps: { iconName: 'ExcelDocument' },
-                        onClick: () => props.onExportExcel?.(getExportTarget())
+                        onClick: () => props.onExportExcel?.(getExportTarget(), selectionCount > 0)
                     },
                     {
                         key: 'csv',
                         text: 'CSV (.csv)',
                         iconProps: { iconName: 'TextDocument' },
-                        onClick: () => props.onExportCSV?.(getExportTarget())
+                        onClick: () => props.onExportCSV?.(getExportTarget(), selectionCount > 0)
                     },
                     {
                         key: 'pdf',
                         text: 'PDF (.pdf)',
                         iconProps: { iconName: 'PDF' },
-                        onClick: () => props.onExportPDF?.(getExportTarget())
+                        onClick: () => props.onExportPDF?.(getExportTarget(), selectionCount > 0)
                     },
                     { key: 'divider', itemType: 1 /* Divider */ },
                     {
                         key: 'zip',
                         text: 'ZIP — All Formats',
                         iconProps: { iconName: 'ZipFolder' },
-                        onClick: () => props.onExportZip?.(getExportTarget())
+                        onClick: () => props.onExportZip?.(getExportTarget(), selectionCount > 0)
                     }
                 ]
             }
@@ -178,7 +179,7 @@ const GenericGrid: React.FC<IGenericGridProps> = (props) => {
     const farItems: ICommandBarItemProps[] = [
         {
             key: 'search',
-            onRender: () => (
+            onRender: (): JSX.Element => (
                 <div className={styles.searchContainer}>
                     <SearchBox
                         placeholder="Search across all fields..."
