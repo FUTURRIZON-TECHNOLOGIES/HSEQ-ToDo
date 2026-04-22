@@ -1,6 +1,12 @@
 import * as React from 'react';
 import { IModuleInfo } from '../models/IModuleInfo';
 import ToDoModule from '../../modules/todo/ToDoModule';
+import WorksiteHacSwmsModule, {
+    WORKSITE_HAC_SWMS_MODULE_GROUP,
+    WORKSITE_HAC_SWMS_MODULE_ICON,
+    WORKSITE_HAC_SWMS_MODULE_ID,
+    WORKSITE_HAC_SWMS_MODULE_LABEL
+} from '../../modules/worksiteHacSwms';
 
 export const ModuleRegistry: IModuleInfo[] = [
     {
@@ -9,6 +15,13 @@ export const ModuleRegistry: IModuleInfo[] = [
         iconName: 'TaskManager',
         group: 'HSEQ',
         component: ToDoModule
+    },
+    {
+        id: WORKSITE_HAC_SWMS_MODULE_ID,
+        label: WORKSITE_HAC_SWMS_MODULE_LABEL,
+        iconName: WORKSITE_HAC_SWMS_MODULE_ICON,
+        group: WORKSITE_HAC_SWMS_MODULE_GROUP,
+        component: WorksiteHacSwmsModule
     },
     {
         id: 'Compliance',

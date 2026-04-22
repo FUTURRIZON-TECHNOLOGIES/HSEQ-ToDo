@@ -2,6 +2,7 @@ import * as React from 'react';
 import styles from './MainLayout.module.scss';
 import Sidebar from './Sidebar';
 import { getModuleById } from '../../../../common/config/ModuleRegistry';
+import { Icon } from '@fluentui/react';
 
 export interface IMainLayoutProps {
     activeModule: string;
@@ -11,6 +12,7 @@ export interface IMainLayoutProps {
 
 const MainLayout: React.FC<IMainLayoutProps> = ({ children, activeModule, onModuleChange }) => {
     const [isMobileOpen, setIsMobileOpen] = React.useState(false);
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false);
 
     const handleItemClick = (module: string) => {
         onModuleChange(module);
@@ -31,10 +33,11 @@ const MainLayout: React.FC<IMainLayoutProps> = ({ children, activeModule, onModu
             )}
 
             {/* ── Sidebar ── */}
-            <div className={`${styles.sidebarWrapper} ${isMobileOpen ? styles.mobileOpen : ''}`}>
+            <div className={`${styles.sidebarWrapper} ${isMobileOpen ? styles.mobileOpen : ''} ${isSidebarCollapsed ? styles.collapsed : ''}`}>
                 <Sidebar
                     activeItem={activeModule}
                     onItemClick={handleItemClick}
+                    isCollapsed={isSidebarCollapsed}
                 />
             </div>
 
@@ -49,6 +52,14 @@ const MainLayout: React.FC<IMainLayoutProps> = ({ children, activeModule, onModu
                         aria-label="Open navigation"
                     >
                         <span /><span /><span />
+                    </button>
+                    <button
+                        className={styles.sidebarToggle}
+                        onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                        title={isSidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+                        type="button"
+                    >
+                        <Icon iconName={isSidebarCollapsed ? 'DoubleChevronRight' : 'DoubleChevronLeft'} />
                     </button>
 
                     {/* Breadcrumb */}

@@ -1,0 +1,465 @@
+@import '../../webparts/swf/styles/variables';
+
+.formShell {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: #f3f4f8;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    overflow: hidden;
+}
+
+.detailToolbar {
+    height: 52px;
+    background: linear-gradient(135deg, #0E4D92 0%, #1565C0 100%);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 10px;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(14,77,146,0.3);
+
+    .detailTitle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+        min-width: 0;
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .detailActions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+    }
+
+    :global(.ms-Button) {
+        height: 32px;
+        border-radius: 4px;
+        font-size: 12px;
+    }
+
+    :global(.ms-Button--primary) {
+        background: #ffffff;
+        color: $primary-color;
+        border: none;
+        font-weight: 700;
+
+        :global(.ms-Button-icon) {
+            color: $primary-color;
+        }
+    }
+
+    :global(.ms-Button--default) {
+        background: rgba(255,255,255,0.15);
+        color: #ffffff;
+        border: 1px solid rgba(255,255,255,0.35);
+
+        :global(.ms-Button-icon) {
+            color: #ffffff;
+        }
+
+        &:hover {
+            background: rgba(255,255,255,0.25);
+            color: #ffffff;
+        }
+    }
+}
+
+.formContent {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 460px minmax(520px, 1fr);
+    overflow: hidden;
+}
+
+.editorColumn {
+    background: #ffffff;
+    border-right: 1px solid #dde1ea;
+    overflow-y: auto;
+    padding: 12px 14px 24px;
+}
+
+.previewColumn {
+    min-width: 0;
+    overflow: hidden;
+    background: #242424;
+}
+
+.formGrid {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 8px 12px;
+    align-items: start;
+
+    :global(.ms-Label) {
+        color: #6d737f;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    :global(.ms-TextField-fieldGroup),
+    :global(.ms-Dropdown-title) {
+        border-color: #d0d5de;
+        border-radius: 3px;
+        min-height: 34px;
+    }
+}
+
+.statusDropdown {
+    :global(.ms-Dropdown-title) {
+        background: #fff800;
+        color: #111111;
+        border-color: #fff800;
+    }
+}
+
+.continueButton {
+    margin: 8px 0 18px 204px;
+    width: 148px;
+    height: 40px;
+    background: #35658d;
+    border-color: #35658d;
+    border-radius: 3px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.sectionBlock {
+    margin-top: 16px;
+}
+
+.sectionTitle {
+    font-size: 13px;
+    font-weight: 700;
+    color: #111111;
+    margin-bottom: 8px;
+}
+
+.swmsPicker {
+    display: grid;
+    grid-template-columns: 1fr 140px;
+    gap: 4px;
+
+    :global(.ms-Button) {
+        height: 38px;
+        text-transform: uppercase;
+        font-weight: 700;
+    }
+}
+
+.swmsList {
+    margin-top: 4px;
+    border: 1px solid #e1e5ed;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+}
+
+.swmsRow {
+    display: grid;
+    grid-template-columns: 56px 90px 1fr;
+    align-items: center;
+    min-height: 60px;
+    background: #ffffff;
+
+    button {
+        border: none;
+        background: transparent;
+        color: #444;
+        font-size: 14px;
+        cursor: pointer;
+    }
+
+    a {
+        color: $primary-color;
+        text-decoration: underline;
+        cursor: pointer;
+    }
+
+    span {
+        font-size: 13px;
+        color: #2d3340;
+    }
+}
+
+.uploadDrop {
+    display: grid;
+    grid-template-columns: 1fr 102px;
+    border: 1px solid #dfe3eb;
+    background: #f8f9fc;
+
+    span {
+        color: #a3a9b3;
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+
+    :global(.ms-Button) {
+        border-radius: 0;
+        height: 40px;
+    }
+}
+
+.timelineBlock {
+    margin-top: 64px;
+}
+
+.timelineHeader {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #1f2933;
+    font-size: 14px;
+    margin-bottom: 28px;
+
+    :global(.ms-Icon) {
+        color: #52606d;
+    }
+}
+
+.timelineEntry {
+    display: grid;
+    grid-template-columns: 42px 1fr;
+    gap: 8px;
+    margin-bottom: 18px;
+
+    strong {
+        color: #233142;
+        font-size: 12px;
+        margin-right: 6px;
+    }
+
+    span {
+        color: #8b929c;
+        font-size: 12px;
+    }
+
+    p {
+        margin: 4px 0 0;
+        color: #233142;
+        font-size: 12px;
+    }
+}
+
+.avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: $primary-color;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+}
+
+.pdfViewer {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-width: 0;
+    background: #242424;
+}
+
+.pdfToolbar {
+    height: 72px;
+    background: #333333;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px 0 32px;
+    flex-shrink: 0;
+}
+
+.pdfFile,
+.pdfTools {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.pdfFile {
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.pdfTools {
+    button {
+        width: 28px;
+        height: 28px;
+        border: none;
+        background: transparent;
+        color: #ffffff;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 3px;
+
+        &:hover {
+            background: rgba(255,255,255,0.12);
+        }
+    }
+}
+
+.pdfPageIndicator,
+.zoomValue {
+    color: #ffffff;
+    font-size: 13px;
+}
+
+.pdfDivider {
+    width: 1px;
+    height: 28px;
+    background: rgba(255,255,255,0.25);
+}
+
+.pdfStage {
+    flex: 1;
+    overflow: auto;
+    padding: 2px 32px 32px;
+    display: flex;
+    justify-content: center;
+}
+
+.pdfPage {
+    width: 914px;
+    min-height: 1292px;
+    background: #ffffff;
+    color: #111111;
+    margin-top: 0;
+    padding: 36px 48px;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.35);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.pdfHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #d5d5d5;
+    padding-bottom: 18px;
+    margin-bottom: 10px;
+
+    h2 {
+        margin: 0;
+        color: #777777;
+        font-size: 22px;
+        font-weight: 700;
+    }
+}
+
+.pdfBrand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #213843;
+    font-size: 24px;
+}
+
+.brandMark {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: repeating-linear-gradient(135deg, #dce8f4 0, #dce8f4 4px, #7ba1c4 4px, #7ba1c4 8px);
+    color: #12324d;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.pdfSectionTitle {
+    background: #35658d;
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+    padding: 5px 8px;
+    margin-top: 16px;
+    text-transform: uppercase;
+}
+
+.pdfTable {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+
+    th,
+    td {
+        border: 1px solid #bdbdbd;
+        padding: 6px 8px;
+        font-size: 13px;
+        line-height: 1.35;
+        vertical-align: top;
+        text-align: left;
+        word-break: break-word;
+    }
+
+    th {
+        width: 30%;
+        font-weight: 700;
+        background: #f8f8f8;
+    }
+
+    thead th {
+        width: auto;
+    }
+}
+
+@media (max-width: 1180px) {
+    .formContent {
+        grid-template-columns: 390px minmax(440px, 1fr);
+    }
+
+    .formGrid {
+        grid-template-columns: 120px 1fr;
+    }
+
+    .continueButton {
+        margin-left: 172px;
+    }
+
+    .pdfPage {
+        width: 780px;
+    }
+}
+
+@media (max-width: 900px) {
+    .detailToolbar {
+        height: auto;
+        flex-wrap: wrap;
+        padding: 8px 12px;
+
+        .detailTitle {
+            min-width: 100%;
+        }
+
+        .detailActions {
+            flex-wrap: wrap;
+        }
+    }
+
+    .formContent {
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    .editorColumn {
+        overflow: visible;
+    }
+
+    .previewColumn {
+        height: 680px;
+        flex-shrink: 0;
+    }
+}
