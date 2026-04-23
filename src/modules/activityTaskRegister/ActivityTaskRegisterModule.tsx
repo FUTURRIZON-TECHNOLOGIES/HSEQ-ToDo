@@ -71,25 +71,30 @@ const ActivityTaskRegisterModule: React.FC<IActivityTaskModuleProps> = ({ contex
         }
     ];
 
-    const handleSave = async (payload: any, mode: 'stay' | 'close' | 'new') => {
+    const handleSave = async (payload: Partial<IActivityTaskItem>, mode: 'stay' | 'close' | 'new') => {
         try {
+            let savedId = selectedItem?.Id;
             if (selectedItem?.Id) {
                 await service.updateActivityTask(selectedItem.Id, payload);
             } else {
-                await service.addActivityTask(payload);
+                const result = await service.addActivityTask(payload);
+                savedId = result?.data?.Id;
             }
 
             await fetchItems();
 
             if (mode === 'close') {
                 setIsPanelOpen(false);
+                setSelectedItem(undefined);
             } else if (mode === 'new') {
                 setSelectedItem(undefined);
+            } else if (mode === 'stay' && savedId && !selectedItem?.Id) {
+                // After first save of a new record, update the panel to show the saved item
+                setSelectedItem(prev => prev ? prev : ({ Id: savedId } as IActivityTaskItem));
             }
-            // If stay, we might want to refresh the selected item but for now we'll keep it as is
         } catch (error) {
-            console.error("Failed to save activity task", error);
-            alert("Failed to save item.");
+            console.error("Failed to save activity task:", error);
+            alert("Failed to save item. Please check console for details.");
         }
     };
 

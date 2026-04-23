@@ -34,9 +34,10 @@ export interface IActivityTaskItem {
     
     // Virtual fields for grid display
     ActivityValue?: string;
+    BusinessProfileValue?: string;
     WorkZoneValue?: string;
+    HazardValue?: string;
     ResponsiblePersonsValue?: string;
-    
     Created?: string;
     Modified?: string;
     Author?: ISPUser;

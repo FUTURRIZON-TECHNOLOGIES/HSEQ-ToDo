@@ -1,8 +1,8 @@
 import * as React from 'react';
-import { 
-    Stack, 
-    PrimaryButton, 
-    DefaultButton, 
+import {
+    Stack,
+    PrimaryButton,
+    DefaultButton,
     IconButton,
     Spinner,
     SpinnerSize,
@@ -24,7 +24,7 @@ interface IActivityTaskFormProps {
     item?: IActivityTaskItem;
     context: WebPartContext;
     onClose: () => void;
-    onSave: (payload: any, mode: 'stay' | 'close' | 'new') => Promise<void>;
+    onSave: (payload: Partial<IActivityTaskItem>, mode: 'stay' | 'close' | 'new') => Promise<void>;
     onRefresh: () => void;
 }
 
@@ -35,33 +35,36 @@ const ActivityTaskForm: React.FC<IActivityTaskFormProps> = ({
     onSave,
     onRefresh
 }) => {
-    const [formData, setFormData] = React.useState<Partial<IActivityTaskItem>>(item || {
-        Active: true,
-        HighRiskWork: false
-    });
+    const [formData, setFormData] = React.useState<Partial<IActivityTaskItem>>(
+        item ? { ...item } : { Active: true, HighRiskWork: false }
+    );
     const [hazards, setHazards] = React.useState<IActivityTaskHazard[]>([]);
-    const [loading, setLoading] = React.useState(false);
+    const [loading, setLoading] = React.useState(true);
+    const [saving, setSaving] = React.useState(false);
+
     const [lookups, setLookups] = React.useState({
-        activities: [] as ISPLookup[],
-        workZones: [] as ISPLookup[],
-        businessProfiles: [] as ISPLookup[],
-        hazards: [] as ISPLookup[]
+        activities:      [] as ISPLookup[],
+        workZones:       [] as ISPLookup[],
+        businessProfiles:[] as ISPLookup[],
+        hazardTypes:     [] as ISPLookup[]   // For the dialog picker
     });
     const [choices, setChoices] = React.useState({
         consequences: [] as string[],
-        likelihoods: [] as string[]
+        likelihoods:  [] as string[]
     });
-    const [isHazardDialogVisible, setIsHazardDialogVisible] = React.useState(false);
-    const [selectedHazardId, setSelectedHazardId] = React.useState<number | undefined>(undefined);
+
+    // Dialog state
+    const [isHazardDialogOpen, setIsHazardDialogOpen] = React.useState(false);
+    const [pendingHazardId, setPendingHazardId] = React.useState<number | undefined>(undefined);
 
     const service = React.useMemo(() => new ActivityTaskService(context), [context]);
 
+    // ── Load all reference data ───────────────────────────────────────────────
     React.useEffect(() => {
-        const loadData = async () => {
+        const load = async () => {
             setLoading(true);
             try {
-                // Load lookups and choices
-                const [acts, zones, profiles, hazards, cons, likes] = await Promise.all([
+                const [acts, zones, profiles, hazardTypes, cons, likes] = await Promise.all([
                     service.getLookupOptions('Risk Register Activity Type', 'Name'),
                     service.getLookupOptions('Risk Register Work Zone Type', 'Name'),
                     service.getLookupOptions('Business Profiles', 'Business Profile'),
@@ -69,47 +72,90 @@ const ActivityTaskForm: React.FC<IActivityTaskFormProps> = ({
                     service.getChoiceOptions('Consequence'),
                     service.getChoiceOptions('Likelihood')
                 ]);
-
-                setLookups({ 
-                    activities: acts, 
-                    workZones: zones, 
-                    businessProfiles: profiles,
-                    hazards: hazards
-                });
+                setLookups({ activities: acts, workZones: zones, businessProfiles: profiles, hazardTypes });
                 setChoices({ consequences: cons, likelihoods: likes });
 
                 if (item?.Id) {
-                    const hazardData = await service.getHazards(item.Id);
-                    setHazards(hazardData);
+                    const h = await service.getHazards(item.Id);
+                    setHazards(h);
                 }
-            } catch (error) {
-                console.error("Failed to load form data", error);
+            } catch (err) {
+                console.error("[ActivityTaskForm] Load failed:", err);
             } finally {
                 setLoading(false);
             }
         };
+        load();
+    }, [service, item?.Id]);
 
-        loadData();
-    }, [service, item]);
+    // Sync formData when item changes (edit vs new)
+    React.useEffect(() => {
+        setFormData(item ? { ...item } : { Active: true, HighRiskWork: false });
+    }, [item]);
 
     const handleFieldChange = (field: string, value: any) => {
         setFormData(prev => ({ ...prev, [field]: value }));
     };
 
     const handleSave = async (mode: 'stay' | 'close' | 'new') => {
-        setLoading(true);
+        setSaving(true);
         try {
             await onSave(formData, mode);
+            if (mode === 'new') {
+                setFormData({ Active: true, HighRiskWork: false });
+                setHazards([]);
+            }
         } finally {
-            setLoading(false);
+            setSaving(false);
         }
     };
 
-    if (loading && !formData.Id) {
+    // ── Add Hazard dialog ──────────────────────────────────────────────────────
+    const handleAddHazard = async () => {
+        if (!pendingHazardId) return;
+        const hazardType = lookups.hazardTypes.find(h => h.Id === pendingHazardId);
+        if (!hazardType) return;
+
+        if (formData.Id) {
+            // Saved record — persist to SP
+            try {
+                const newHazard = await service.addHazard(formData.Id, hazardType.Title);
+                setHazards(prev => [...prev, newHazard]);
+            } catch (e) {
+                alert("Failed to save hazard.");
+            }
+        } else {
+            // Unsaved record — add locally (will not persist until the form is saved first)
+            setHazards(prev => [...prev, {
+                Id: -(Date.now()),   // negative = local-only
+                Title: hazardType.Title,
+                ActivityTaskRegisterId: 0
+            }]);
+        }
+
+        setIsHazardDialogOpen(false);
+        setPendingHazardId(undefined);
+    };
+
+    const handleDeleteHazard = async (id: number) => {
+        if (!confirm("Are you sure you want to delete this hazard?")) return;
+        if (id > 0) {
+            try {
+                await service.deleteHazard(id);
+            } catch (e) {
+                alert("Failed to delete hazard from server.");
+                return;
+            }
+        }
+        setHazards(prev => prev.filter(h => h.Id !== id));
+    };
+
+    // ── Render ─────────────────────────────────────────────────────────────────
+    if (loading) {
         return (
             <div className={styles.formContainer}>
-                <Stack verticalAlign="center" horizontalAlign="center" grow>
-                    <Spinner size={SpinnerSize.large} label="Loading form..." />
+                <Stack verticalAlign="center" horizontalAlign="center" styles={{ root: { height: '100%' } }}>
+                    <Spinner size={SpinnerSize.large} label="Loading form data..." />
                 </Stack>
             </div>
         );
@@ -117,67 +163,77 @@ const ActivityTaskForm: React.FC<IActivityTaskFormProps> = ({
 
     return (
         <div className={styles.formContainer}>
+            {/* Toolbar */}
             <div className={styles.toolbar}>
                 <div className={styles.title}>
-                    Master Activity & Task Register: {formData.Id || 'New Item'}
+                    Master Activity & Task Register: {formData.Id ? `#${formData.Id}` : 'New Item'}
                 </div>
                 <div className={styles.actions}>
-                    <PrimaryButton 
-                        iconProps={{ iconName: 'Save' }} 
-                        text="Save" 
+                    <PrimaryButton
+                        iconProps={{ iconName: 'Save' }}
+                        text={saving ? 'Saving…' : 'Save'}
+                        disabled={saving}
                         onClick={() => handleSave('stay')}
                         className={styles.btnSave}
                     />
-                    <DefaultButton 
-                        iconProps={{ iconName: 'SaveAndClose' }} 
-                        text="Save & Close" 
+                    <DefaultButton
+                        iconProps={{ iconName: 'SaveAndClose' }}
+                        text="Save & Close"
+                        disabled={saving}
                         onClick={() => handleSave('close')}
                         className={styles.btnSecondary}
                     />
-                    <IconButton 
-                        iconProps={{ iconName: 'Refresh' }} 
-                        title="Refresh" 
+                    <IconButton
+                        iconProps={{ iconName: 'Refresh' }}
+                        title="Refresh"
                         onClick={onRefresh}
                         className={styles.btnSecondary}
                     />
-                    <IconButton 
-                        iconProps={{ iconName: 'Cancel' }} 
-                        title="Close" 
+                    <IconButton
+                        iconProps={{ iconName: 'Cancel' }}
+                        title="Close"
                         onClick={onClose}
                         className={styles.btnSecondary}
                     />
                 </div>
             </div>
 
+            {/* Body */}
             <div className={styles.content}>
+                {/* Left — Risk Detail */}
                 <div className={styles.leftColumn}>
                     <div className={styles.section}>
-                        <Text variant="mediumPlus" styles={{ root: { fontWeight: 'bold', display: 'block', marginBottom: 15 } }}>RISK DETAIL & ASSESSMENT</Text>
-                        <RiskAssessment 
-                            data={formData} 
+                        <Text
+                            variant="mediumPlus"
+                            styles={{ root: { fontWeight: 'bold', display: 'block', marginBottom: 16 } }}
+                        >
+                            RISK DETAIL &amp; ASSESSMENT
+                        </Text>
+                        <RiskAssessment
+                            data={formData}
                             onChange={handleFieldChange}
-                            lookups={lookups}
+                            lookups={{
+                                activities:       lookups.activities,
+                                workZones:        lookups.workZones,
+                                businessProfiles: lookups.businessProfiles
+                            }}
                             choices={choices}
                         />
                     </div>
                 </div>
 
+                {/* Right — Hazards + Timeline */}
                 <div className={styles.rightColumn}>
                     <div className={styles.section}>
-                        <HazardManager 
+                        <HazardManager
                             hazards={hazards}
-                            onAdd={() => setIsHazardDialogVisible(true)}
-                            onDelete={async (id) => {
-                                if (confirm("Delete this hazard?")) {
-                                    await service.deleteHazard(id);
-                                    setHazards(prev => prev.filter(h => h.Id !== id));
-                                }
-                            }}
-                            onEdit={() => {}}
+                            onAdd={() => setIsHazardDialogOpen(true)}
+                            onDelete={handleDeleteHazard}
+                            onEdit={() => { /* TODO */ }}
                             revisedAssessment={{
                                 consequence: formData.RevisedConsequence,
-                                likelihood: formData.RevisedLikelihood,
-                                ranking: formData.RevisedRanking
+                                likelihood:  formData.RevisedLikelihood,
+                                ranking:     formData.RevisedRanking
                             }}
                             onRevisedChange={handleFieldChange}
                             choices={choices}
@@ -190,44 +246,40 @@ const ActivityTaskForm: React.FC<IActivityTaskFormProps> = ({
                 </div>
             </div>
 
+            {/* Add Hazard Dialog */}
             <Dialog
-                hidden={!isHazardDialogVisible}
-                onDismiss={() => setIsHazardDialogVisible(false)}
+                hidden={!isHazardDialogOpen}
+                onDismiss={() => { setIsHazardDialogOpen(false); setPendingHazardId(undefined); }}
                 dialogContentProps={{
                     type: DialogType.normal,
                     title: 'Add New Hazard',
-                    subText: 'Select a hazard from the list below to add it to this task.'
+                    subText: 'Select a hazard type to add to this task.'
                 }}
-                modalProps={{ isBlocking: false }}
+                modalProps={{ isBlocking: true }}
+                minWidth={440}
             >
                 <Dropdown
-                    label="Select Hazard"
-                    options={lookups.hazards.map(h => ({ key: h.Id, text: h.Title }))}
-                    selectedKey={selectedHazardId}
-                    onChange={(_, opt) => setSelectedHazardId(opt?.key as number)}
+                    label="Hazard Type"
+                    placeholder="-- Select a Hazard --"
+                    options={lookups.hazardTypes.map(h => ({ key: h.Id, text: h.Title }))}
+                    selectedKey={pendingHazardId ?? null}
+                    onChange={(_, opt) => setPendingHazardId(opt?.key as number)}
+                    styles={{ root: { marginTop: 12 } }}
                 />
                 <DialogFooter>
-                    <PrimaryButton 
-                        text="Add" 
-                        disabled={!selectedHazardId} 
-                        onClick={async () => {
-                            if (selectedHazardId && formData.Id) {
-                                const hazard = lookups.hazards.find(h => h.Id === selectedHazardId);
-                                if (hazard) {
-                                    const newHazard = await service.addHazard(formData.Id, hazard.Id, hazard.Title);
-                                    setHazards(prev => [...prev, newHazard]);
-                                }
-                            }
-                            setIsHazardDialogVisible(false);
-                            setSelectedHazardId(undefined);
-                        }} 
+                    <PrimaryButton
+                        text="Add Hazard"
+                        disabled={!pendingHazardId}
+                        onClick={handleAddHazard}
                     />
-                    <DefaultButton text="Cancel" onClick={() => setIsHazardDialogVisible(false)} />
+                    <DefaultButton
+                        text="Cancel"
+                        onClick={() => { setIsHazardDialogOpen(false); setPendingHazardId(undefined); }}
+                    />
                 </DialogFooter>
             </Dialog>
         </div>
     );
 };
-
 
 export default ActivityTaskForm;

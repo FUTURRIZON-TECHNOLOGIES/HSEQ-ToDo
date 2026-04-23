@@ -15,7 +15,6 @@ interface IRiskAssessmentProps {
         activities: ISPLookup[];
         workZones: ISPLookup[];
         businessProfiles: ISPLookup[];
-        hazards: ISPLookup[];
     };
     choices: {
         consequences: string[];
@@ -23,46 +22,37 @@ interface IRiskAssessmentProps {
     };
 }
 
-const RiskAssessment: React.FC<IRiskAssessmentProps> = ({ 
-    data, 
-    onChange, 
-    lookups, 
-    choices 
-}) => {
-    const mapToOptions = (items: ISPLookup[]): IDropdownOption[] => 
+const RiskAssessment: React.FC<IRiskAssessmentProps> = ({ data, onChange, lookups, choices }) => {
+    const mapToOptions = (items: ISPLookup[]): IDropdownOption[] =>
         items.map(i => ({ key: i.Id, text: i.Title }));
 
     const mapChoices = (items: string[]): IDropdownOption[] =>
         items.map(i => ({ key: i, text: i }));
 
     return (
-        <Stack tokens={{ childrenGap: 12 }}>
+        <Stack tokens={{ childrenGap: 14 }}>
             <Dropdown
                 label="Business Profile"
-                selectedKey={data.BusinessProfileId}
+                placeholder="-- Select Business Profile --"
+                selectedKey={data.BusinessProfileId ?? null}
                 options={mapToOptions(lookups.businessProfiles)}
                 onChange={(_, opt) => onChange('BusinessProfileId', opt?.key)}
             />
-            
+
             <Dropdown
                 label="Activity"
-                selectedKey={data.ActivityId}
+                placeholder="-- Select Activity --"
+                selectedKey={data.ActivityId ?? null}
                 options={mapToOptions(lookups.activities)}
                 onChange={(_, opt) => onChange('ActivityId', opt?.key)}
             />
 
             <Dropdown
                 label="Work Zone"
-                selectedKey={data.WorkZoneId}
+                placeholder="-- Select Work Zone --"
+                selectedKey={data.WorkZoneId ?? null}
                 options={mapToOptions(lookups.workZones)}
                 onChange={(_, opt) => onChange('WorkZoneId', opt?.key)}
-            />
-
-            <Dropdown
-                label="Hazard"
-                selectedKey={data.HazardId}
-                options={mapToOptions(lookups.hazards)}
-                onChange={(_, opt) => onChange('HazardId', opt?.key)}
             />
 
             <TextField
@@ -76,14 +66,16 @@ const RiskAssessment: React.FC<IRiskAssessmentProps> = ({
             <Stack horizontal tokens={{ childrenGap: 20 }}>
                 <Dropdown
                     label="Consequence"
-                    selectedKey={data.Consequence}
+                    placeholder="-- Select --"
+                    selectedKey={data.Consequence ?? null}
                     options={mapChoices(choices.consequences)}
                     onChange={(_, opt) => onChange('Consequence', opt?.key)}
                     styles={{ root: { flex: 1 } }}
                 />
                 <Dropdown
                     label="Likelihood"
-                    selectedKey={data.Likelihood}
+                    placeholder="-- Select --"
+                    selectedKey={data.Likelihood ?? null}
                     options={mapChoices(choices.likelihoods)}
                     onChange={(_, opt) => onChange('Likelihood', opt?.key)}
                     styles={{ root: { flex: 1 } }}
@@ -92,19 +84,19 @@ const RiskAssessment: React.FC<IRiskAssessmentProps> = ({
 
             <TextField
                 label="Risk Ranking"
-                readOnly
                 value={data.RiskRanking || ''}
+                onChange={(_, val) => onChange('RiskRanking', val)}
             />
 
-            <Stack horizontal tokens={{ childrenGap: 20 }} verticalAlign="end">
+            <Stack horizontal tokens={{ childrenGap: 24 }} verticalAlign="center">
                 <Checkbox
                     label="High Risk Work"
-                    checked={data.HighRiskWork}
+                    checked={!!data.HighRiskWork}
                     onChange={(_, checked) => onChange('HighRiskWork', checked)}
                 />
                 <Checkbox
                     label="Active"
-                    checked={data.Active}
+                    checked={data.Active !== false}
                     onChange={(_, checked) => onChange('Active', checked)}
                 />
             </Stack>

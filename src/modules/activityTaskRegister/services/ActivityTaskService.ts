@@ -1,169 +1,256 @@
 import { WebPartContext } from "@microsoft/sp-webpart-base";
-import { BaseSPService } from "../../../common/services/BaseSPService";
+import { spfi, SPFx, SPFI } from "@pnp/sp";
 import { IActivityTaskItem, IActivityTaskHazard, ISPLookup } from "../models/IActivityTask";
 import "@pnp/sp/webs";
 import "@pnp/sp/lists";
 import "@pnp/sp/items";
+import "@pnp/sp/fields";
 
-export class ActivityTaskService extends BaseSPService {
-    private readonly MAIN_LIST = "ActivityTaskRegister";
-    private readonly HAZARD_LIST = "ActivityTaskHazardType";
+/**
+ * ActivityTaskService
+ * Uses web.getList(serverRelativeUrl) for KNOWN lists so the list display title
+ * doesn't matter — only the URL name (folder inside /Lists/) matters.
+ * The URL name comes from the SharePoint URL the user provided:
+ *   /sites/HSEQ/Lists/ActivityTaskRegister
+ *   /sites/HSEQ/Lists/ActivityTaskHazardType
+ */
+export class ActivityTaskService {
+    private _sp: SPFI;
+    private _siteRelUrl: string;   // e.g. "/sites/HSEQ"
+
+    // Internal URL names (from the /Lists/<name>/ segment of the SP URL)
+    private readonly MAIN_URL    = "ActivityTaskRegister";
+    private readonly HAZARD_URL  = "ActivityTaskHazardType";
 
     constructor(context: WebPartContext) {
-        super(context);
+        this._sp = spfi().using(SPFx(context));
+        // "/sites/HSEQ" — no trailing slash
+        this._siteRelUrl = context.pageContext.web.serverRelativeUrl.replace(/\/$/, "");
     }
 
+    /** Build absolute server-relative URL for a /Lists/<urlName> list */
+    private lUrl(urlName: string): string {
+        return `${this._siteRelUrl}/Lists/${urlName}`;
+    }
+
+    private get mainList()   { return this._sp.web.getList(this.lUrl(this.MAIN_URL));   }
+    private get hazardList() { return this._sp.web.getList(this.lUrl(this.HAZARD_URL)); }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // MAIN LIST — read
+    // ─────────────────────────────────────────────────────────────────────────────
     public async getActivityTasksPaged(
-        page: number,
-        pageSize: number,
+        page:        number,
+        pageSize:    number,
         searchQuery?: string,
-        sortField: string = "Id",
+        sortField:   string  = "Id",
         isAscending: boolean = true
     ): Promise<IActivityTaskItem[]> {
-        await this.init(this.MAIN_LIST);
-        const skipCount = (page - 1) * pageSize;
-
+        const skip = (page - 1) * pageSize;
         try {
-            let query = this._sp.web.lists.getByTitle(this._listTitle).items
+            let q = this.mainList.items
                 .select(
-                    "*",
-                    "Id",
-                    "Activity/Id", "Activity/Title",
-                    "BusinessProfile/Id", "BusinessProfile/Title",
-                    "WorkZone/Id", "WorkZone/Title",
-                    "Hazard/Id", "Hazard/Title",
-                    "ResponsiblePersons/Id", "ResponsiblePersons/Title",
-                    "Author/Title", "Editor/Title"
+                    "Id", "Title", "Task",
+                    "Activity/Id",       "Activity/Title",
+                    "BusinessProfile/Id","BusinessProfile/Title",
+                    "WorkZone/Id",       "WorkZone/Title",
+                    "Hazard/Id",         "Hazard/Title",
+                    "Consequence", "Likelihood", "RiskRanking",
+                    "RevisedConsequence", "RevisedLikelihood", "RevisedRanking",
+                    "HighRiskWork", "Active",
+                    "ActivityId", "BusinessProfileId", "WorkZoneId", "HazardId"
                 )
-                .expand("Activity", "BusinessProfile", "WorkZone", "Hazard", "ResponsiblePersons", "Author", "Editor")
+                .expand("Activity", "BusinessProfile", "WorkZone", "Hazard")
                 .orderBy(sortField, isAscending)
                 .top(pageSize);
 
-            if (skipCount > 0) {
-                query = query.skip(skipCount);
-            }
-
+            if (skip > 0) q = q.skip(skip);
             if (searchQuery) {
-                // Simplistic search for now, as per guidelines for performance on large lists
-                // In a real scenario, this would use the search API or filtered query
-                query = query.filter(`substringof('${searchQuery}', Task) or substringof('${searchQuery}', Title)`);
+                q = q.filter(`substringof('${searchQuery}',Task) or substringof('${searchQuery}',Title)`);
             }
 
-            const items = await query();
-            return items.map(item => this.mapToActivityTask(item));
-        } catch (error) {
-            console.error("[ActivityTaskService] getActivityTasksPaged failed", error);
+            const rows = await q();
+            return rows.map(r => this.map(r));
+        } catch (err) {
+            console.error("[ATService] paged fetch failed, trying simple:", err);
+            return this.simpleFetch(page, pageSize);
+        }
+    }
+
+    private async simpleFetch(page: number, pageSize: number): Promise<IActivityTaskItem[]> {
+        try {
+            const skip = (page - 1) * pageSize;
+            let q = this.mainList.items
+                .select("Id","Title","Task","Consequence","Likelihood","RiskRanking","HighRiskWork","Active")
+                .orderBy("Id", true).top(pageSize);
+            if (skip > 0) q = q.skip(skip);
+            const rows = await q();
+            return rows.map(r => ({ ...r } as IActivityTaskItem));
+        } catch (e) {
+            console.error("[ATService] simple fetch also failed:", e);
             return [];
         }
     }
 
     public async getTotalCount(searchQuery?: string): Promise<number> {
-        await this.init(this.MAIN_LIST);
         try {
             if (searchQuery) {
-                const results = await this._sp.web.lists.getByTitle(this._listTitle).items
-                    .filter(`substringof('${searchQuery}', Task)`)
+                const r = await this.mainList.items
+                    .filter(`substringof('${searchQuery}',Task) or substringof('${searchQuery}',Title)`)
                     .select("Id")();
-                return results.length;
+                return r.length;
             }
-            const list = await this._sp.web.lists.getByTitle(this._listTitle).select("ItemCount")();
-            return list.ItemCount;
-        } catch (error) {
+            const info = await this.mainList.select("ItemCount")();
+            return (info as any).ItemCount ?? 0;
+        } catch (e) {
+            console.error("[ATService] getTotalCount failed:", e);
             return 0;
         }
     }
 
-    public async getHazards(taskId: number): Promise<IActivityTaskHazard[]> {
-        await this.init(this.HAZARD_LIST);
-        try {
-            const items = await this._sp.web.lists.getByTitle(this._listTitle).items
-                .filter(`ActivityTaskRegisterId eq ${taskId}`)
-                .select("*", "Hazard/Id", "Hazard/Title")
-                .expand("Hazard")();
-            
-            return items.map(item => ({
-                Id: item.Id,
-                Title: item.Title,
-                ActivityTaskRegisterId: item.ActivityTaskRegisterId,
-                Hazard: item.Hazard ? { Id: item.Hazard.Id, Title: item.Hazard.Title } : undefined
-            }));
-        } catch (error) {
-            console.error("[ActivityTaskService] getHazards failed", error);
-            return [];
-        }
+    // ─────────────────────────────────────────────────────────────────────────────
+    // MAIN LIST — write
+    // ─────────────────────────────────────────────────────────────────────────────
+    public async addActivityTask(data: Partial<IActivityTaskItem>): Promise<any> {
+        const p = this.payload(data);
+        console.log("[ATService] ADD payload:", JSON.stringify(p));
+        return this.mainList.items.add(p);
     }
 
-    public async addHazard(taskId: number, hazardLookupId: number, hazardTitle: string): Promise<IActivityTaskHazard> {
-        await this.init(this.HAZARD_LIST);
-        const result = await this._sp.web.lists.getByTitle(this._listTitle).items.add({
-            Title: hazardTitle,
-            ActivityTaskRegisterId: taskId,
-            HazardId: hazardLookupId
-        });
-        
-        return {
-            Id: result.data.Id,
-            Title: hazardTitle,
-            ActivityTaskRegisterId: taskId,
-            Hazard: { Id: hazardLookupId, Title: hazardTitle }
-        };
-    }
-
-    public async deleteHazard(id: number): Promise<void> {
-        await this.init(this.HAZARD_LIST);
-        await this._sp.web.lists.getByTitle(this._listTitle).items.getById(id).delete();
-    }
-
-    public async addActivityTask(item: any): Promise<any> {
-        await this.init(this.MAIN_LIST);
-        return this._sp.web.lists.getByTitle(this._listTitle).items.add(item);
-    }
-
-    public async updateActivityTask(id: number, item: any): Promise<any> {
-        await this.init(this.MAIN_LIST);
-        return this._sp.web.lists.getByTitle(this._listTitle).items.getById(id).update(item);
+    public async updateActivityTask(id: number, data: Partial<IActivityTaskItem>): Promise<any> {
+        const p = this.payload(data);
+        console.log("[ATService] UPDATE payload:", JSON.stringify(p));
+        return this.mainList.items.getById(id).update(p);
     }
 
     public async deleteActivityTask(id: number): Promise<void> {
-        await this.init(this.MAIN_LIST);
-        await this._sp.web.lists.getByTitle(this._listTitle).items.getById(id).delete();
+        await this.mainList.items.getById(id).delete();
     }
 
-    public async getLookupOptions(listName: string, displayField: string = "Title"): Promise<ISPLookup[]> {
+    /** Only send safe SP-writable fields; use *Id suffix for lookups */
+    private payload(d: Partial<IActivityTaskItem>): Record<string, any> {
+        const p: Record<string, any> = {};
+        const set = (k: string, v: any) => { if (v !== undefined && v !== null) p[k] = v; };
+
+        set("Task",              d.Task);
+        set("Consequence",       d.Consequence);
+        set("Likelihood",        d.Likelihood);
+        set("RiskRanking",       d.RiskRanking);
+        set("RevisedConsequence",d.RevisedConsequence);
+        set("RevisedLikelihood", d.RevisedLikelihood);
+        set("RevisedRanking",    d.RevisedRanking);
+        set("HighRiskWork",      d.HighRiskWork);
+        set("Active",            d.Active);
+
+        // Lookup IDs — SP REST expects the "<FieldName>Id" suffix
+        if (d.ActivityId)        set("ActivityId",        d.ActivityId);
+        if (d.BusinessProfileId) set("BusinessProfileId", d.BusinessProfileId);
+        if (d.WorkZoneId)        set("WorkZoneId",        d.WorkZoneId);
+        if (d.HazardId)          set("HazardId",          d.HazardId);
+
+        return p;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // HAZARD sub-list
+    // ─────────────────────────────────────────────────────────────────────────────
+    public async getHazards(taskId: number): Promise<IActivityTaskHazard[]> {
         try {
-            // Normalize field name for OData select (handle spaces)
-            const internalFieldName = displayField.replace(/\s/g, '_x0020_');
-            const items = await this._sp.web.lists.getByTitle(listName).items.select("Id", internalFieldName).top(500)();
-            return items.map(i => ({ Id: i.Id, Title: i[internalFieldName] || i.Title }));
-        } catch (error) {
-            console.error(`[ActivityTaskService] getLookupOptions failed for ${listName}`, error);
+            const rows = await this.hazardList.items
+                .filter(`ActivityTaskRegisterId eq ${taskId}`)
+                .select("Id","Title","ActivityTaskRegisterId")();
+            return rows.map(r => ({ Id: r.Id, Title: r.Title||"", ActivityTaskRegisterId: r.ActivityTaskRegisterId }));
+        } catch (e) {
+            console.error("[ATService] getHazards failed:", e);
             return [];
         }
     }
 
-    public async getChoiceOptions(fieldName: string): Promise<string[]> {
-        await this.init(this.MAIN_LIST);
+    public async addHazard(taskId: number, title: string): Promise<IActivityTaskHazard> {
+        const r = await this.hazardList.items.add({ Title: title, ActivityTaskRegisterId: taskId });
+        return { Id: r.data.Id, Title: title, ActivityTaskRegisterId: taskId };
+    }
+
+    public async deleteHazard(id: number): Promise<void> {
+        await this.hazardList.items.getById(id).delete();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // LOOKUP reference lists
+    // These use web.lists.getByTitle() because we know their DISPLAY TITLES from
+    // the column definitions in SharePoint.
+    // ─────────────────────────────────────────────────────────────────────────────
+    public async getLookupOptions(
+        listDisplayTitle: string,
+        fieldDisplayName?: string
+    ): Promise<ISPLookup[]> {
         try {
-            const field: any = await this._sp.web.lists.getByTitle(this._listTitle).fields.getByInternalNameOrTitle(fieldName).select("Choices")();
+            const list = this._sp.web.lists.getByTitle(listDisplayTitle);
+
+            // Discover the internal field name if a display name was given
+            let internalName = "Title";
+            if (fieldDisplayName && fieldDisplayName !== "Title") {
+                const found = await list.fields
+                    .filter(`Title eq '${fieldDisplayName}'`)
+                    .select("InternalName")();
+                if (found.length > 0) internalName = found[0].InternalName;
+                console.log(`[ATService] "${listDisplayTitle}" / "${fieldDisplayName}" → internal: "${internalName}"`);
+            }
+
+            const sel = internalName === "Title" ? ["Id","Title"] : ["Id","Title",internalName];
+            const rows = await list.items.select(...sel).top(500)();
+
+            return rows.map(r => ({
+                Id: r.Id,
+                Title: String(
+                    (r[internalName] !== undefined && r[internalName] !== null && r[internalName] !== "")
+                        ? r[internalName]
+                        : (r.Title || `Item ${r.Id}`)
+                )
+            })).filter(x => x.Title.trim() !== "");
+        } catch (e) {
+            console.error(`[ATService] getLookupOptions("${listDisplayTitle}"/"${fieldDisplayName}") failed:`, e);
+            return [];
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // CHOICE columns — read from the MAIN list's field schema
+    // ─────────────────────────────────────────────────────────────────────────────
+    public async getChoiceOptions(fieldDisplayName: string): Promise<string[]> {
+        try {
+            // Try by display title first
+            const byTitle = await this.mainList.fields
+                .filter(`Title eq '${fieldDisplayName}'`)
+                .select("Choices")();
+            if (byTitle.length > 0 && (byTitle[0] as any).Choices?.length) {
+                return (byTitle[0] as any).Choices as string[];
+            }
+            // Fallback: by internal name
+            const field: any = await this.mainList.fields
+                .getByInternalNameOrTitle(fieldDisplayName)
+                .select("Choices")();
             return field.Choices || [];
-        } catch (error) {
+        } catch (e) {
+            console.error(`[ATService] getChoiceOptions("${fieldDisplayName}") failed:`, e);
             return [];
         }
     }
 
-    private mapToActivityTask(item: any): IActivityTaskItem {
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Mapping helper
+    // ─────────────────────────────────────────────────────────────────────────────
+    private map(item: any): IActivityTaskItem {
         return {
             ...item,
-            ActivityValue: item.Activity?.Title || "",
-            ActivityId: item.Activity?.Id || item.ActivityId,
+            ActivityValue:        item.Activity?.Title        || "",
+            ActivityId:           item.ActivityId             ?? item.Activity?.Id,
             BusinessProfileValue: item.BusinessProfile?.Title || "",
-            BusinessProfileId: item.BusinessProfile?.Id || item.BusinessProfileId,
-            WorkZoneValue: item.WorkZone?.Title || "",
-            WorkZoneId: item.WorkZone?.Id || item.WorkZoneId,
-            HazardValue: item.Hazard?.Title || "",
-            HazardId: item.Hazard?.Id || item.HazardId,
-            ResponsiblePersonsValue: item.ResponsiblePersons?.Title || "",
-            ResponsiblePersonsId: item.ResponsiblePersons?.Id || item.ResponsiblePersonsId
+            BusinessProfileId:    item.BusinessProfileId      ?? item.BusinessProfile?.Id,
+            WorkZoneValue:        item.WorkZone?.Title        || "",
+            WorkZoneId:           item.WorkZoneId             ?? item.WorkZone?.Id,
+            HazardValue:          item.Hazard?.Title          || "",
+            HazardId:             item.HazardId               ?? item.Hazard?.Id
         };
     }
 }
