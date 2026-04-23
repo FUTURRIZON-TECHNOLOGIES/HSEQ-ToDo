@@ -6,7 +6,11 @@ import {
     IconButton,
     Spinner,
     SpinnerSize,
-    Text
+    Text,
+    Dialog,
+    DialogType,
+    DialogFooter,
+    Dropdown
 } from '@fluentui/react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { ActivityTaskService } from '../services/ActivityTaskService';
@@ -40,12 +44,15 @@ const ActivityTaskForm: React.FC<IActivityTaskFormProps> = ({
     const [lookups, setLookups] = React.useState({
         activities: [] as ISPLookup[],
         workZones: [] as ISPLookup[],
-        businessProfiles: [] as ISPLookup[]
+        businessProfiles: [] as ISPLookup[],
+        hazards: [] as ISPLookup[]
     });
     const [choices, setChoices] = React.useState({
         consequences: [] as string[],
         likelihoods: [] as string[]
     });
+    const [isHazardDialogVisible, setIsHazardDialogVisible] = React.useState(false);
+    const [selectedHazardId, setSelectedHazardId] = React.useState<number | undefined>(undefined);
 
     const service = React.useMemo(() => new ActivityTaskService(context), [context]);
 
@@ -54,15 +61,21 @@ const ActivityTaskForm: React.FC<IActivityTaskFormProps> = ({
             setLoading(true);
             try {
                 // Load lookups and choices
-                const [acts, zones, profiles, cons, likes] = await Promise.all([
-                    service.getLookupOptions('ActivityList'), // Example list name
-                    service.getLookupOptions('WorkZoneList'),
-                    service.getLookupOptions('BusinessProfileList'),
+                const [acts, zones, profiles, hazards, cons, likes] = await Promise.all([
+                    service.getLookupOptions('Risk Register Activity Type', 'Name'),
+                    service.getLookupOptions('Risk Register Work Zone Type', 'Name'),
+                    service.getLookupOptions('Business Profiles', 'Business Profile'),
+                    service.getLookupOptions('Activity & Task Hazard Type', 'Hazard Typd'),
                     service.getChoiceOptions('Consequence'),
                     service.getChoiceOptions('Likelihood')
                 ]);
 
-                setLookups({ activities: acts, workZones: zones, businessProfiles: profiles });
+                setLookups({ 
+                    activities: acts, 
+                    workZones: zones, 
+                    businessProfiles: profiles,
+                    hazards: hazards
+                });
                 setChoices({ consequences: cons, likelihoods: likes });
 
                 if (item?.Id) {
@@ -153,9 +166,14 @@ const ActivityTaskForm: React.FC<IActivityTaskFormProps> = ({
                     <div className={styles.section}>
                         <HazardManager 
                             hazards={hazards}
-                            onAdd={() => {}} // TODO: Implement add hazard
-                            onDelete={() => {}} // TODO: Implement delete hazard
-                            onEdit={() => {}} // TODO: Implement edit hazard
+                            onAdd={() => setIsHazardDialogVisible(true)}
+                            onDelete={async (id) => {
+                                if (confirm("Delete this hazard?")) {
+                                    await service.deleteHazard(id);
+                                    setHazards(prev => prev.filter(h => h.Id !== id));
+                                }
+                            }}
+                            onEdit={() => {}}
                             revisedAssessment={{
                                 consequence: formData.RevisedConsequence,
                                 likelihood: formData.RevisedLikelihood,
@@ -171,6 +189,42 @@ const ActivityTaskForm: React.FC<IActivityTaskFormProps> = ({
                     </div>
                 </div>
             </div>
+
+            <Dialog
+                hidden={!isHazardDialogVisible}
+                onDismiss={() => setIsHazardDialogVisible(false)}
+                dialogContentProps={{
+                    type: DialogType.normal,
+                    title: 'Add New Hazard',
+                    subText: 'Select a hazard from the list below to add it to this task.'
+                }}
+                modalProps={{ isBlocking: false }}
+            >
+                <Dropdown
+                    label="Select Hazard"
+                    options={lookups.hazards.map(h => ({ key: h.Id, text: h.Title }))}
+                    selectedKey={selectedHazardId}
+                    onChange={(_, opt) => setSelectedHazardId(opt?.key as number)}
+                />
+                <DialogFooter>
+                    <PrimaryButton 
+                        text="Add" 
+                        disabled={!selectedHazardId} 
+                        onClick={async () => {
+                            if (selectedHazardId && formData.Id) {
+                                const hazard = lookups.hazards.find(h => h.Id === selectedHazardId);
+                                if (hazard) {
+                                    const newHazard = await service.addHazard(formData.Id, hazard.Id, hazard.Title);
+                                    setHazards(prev => [...prev, newHazard]);
+                                }
+                            }
+                            setIsHazardDialogVisible(false);
+                            setSelectedHazardId(undefined);
+                        }} 
+                    />
+                    <DefaultButton text="Cancel" onClick={() => setIsHazardDialogVisible(false)} />
+                </DialogFooter>
+            </Dialog>
         </div>
     );
 };

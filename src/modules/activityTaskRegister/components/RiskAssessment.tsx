@@ -15,6 +15,7 @@ interface IRiskAssessmentProps {
         activities: ISPLookup[];
         workZones: ISPLookup[];
         businessProfiles: ISPLookup[];
+        hazards: ISPLookup[];
     };
     choices: {
         consequences: string[];
@@ -55,6 +56,13 @@ const RiskAssessment: React.FC<IRiskAssessmentProps> = ({
                 selectedKey={data.WorkZoneId}
                 options={mapToOptions(lookups.workZones)}
                 onChange={(_, opt) => onChange('WorkZoneId', opt?.key)}
+            />
+
+            <Dropdown
+                label="Hazard"
+                selectedKey={data.HazardId}
+                options={mapToOptions(lookups.hazards)}
+                onChange={(_, opt) => onChange('HazardId', opt?.key)}
             />
 
             <TextField

@@ -1,15 +1,16 @@
+
 require("./ActivityTaskForm.module.css");
 const styles = {
-  formContainer: 'formContainer_2f8c7f1b',
-  toolbar: 'toolbar_2f8c7f1b',
-  title: 'title_2f8c7f1b',
-  actions: 'actions_2f8c7f1b',
-  content: 'content_2f8c7f1b',
-  leftColumn: 'leftColumn_2f8c7f1b',
-  rightColumn: 'rightColumn_2f8c7f1b',
-  section: 'section_2f8c7f1b',
-  btnSave: 'btnSave_2f8c7f1b',
-  btnSecondary: 'btnSecondary_2f8c7f1b'
+  formContainer: 'formContainer_2a025d61',
+  toolbar: 'toolbar_2a025d61',
+  title: 'title_2a025d61',
+  actions: 'actions_2a025d61',
+  content: 'content_2a025d61',
+  leftColumn: 'leftColumn_2a025d61',
+  rightColumn: 'rightColumn_2a025d61',
+  section: 'section_2a025d61',
+  btnSave: 'btnSave_2a025d61',
+  btnSecondary: 'btnSecondary_2a025d61'
 };
 
 export default styles;

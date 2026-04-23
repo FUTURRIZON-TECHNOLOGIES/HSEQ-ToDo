@@ -14,8 +14,12 @@ export interface IActivityTaskItem {
     Title?: string; // Often Task or similar is used as Title
     Activity?: ISPLookup;
     ActivityId?: number;
+    BusinessProfile?: ISPLookup;
+    BusinessProfileId?: number;
     WorkZone?: ISPLookup;
     WorkZoneId?: number;
+    Hazard?: ISPLookup;
+    HazardId?: number;
     Task?: string;
     ResponsiblePersons?: ISPUser;
     ResponsiblePersonsId?: number;

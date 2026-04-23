@@ -41,7 +41,15 @@ const ActivityTaskRegisterModule: React.FC<IActivityTaskModuleProps> = ({ contex
             minWidth: 120, maxWidth: 200, isResizable: true
         },
         {
+            key: 'BusinessProfile', name: 'Business Profile', fieldName: 'BusinessProfileValue',
+            minWidth: 120, maxWidth: 200, isResizable: true
+        },
+        {
             key: 'WorkZone', name: 'Work Zone', fieldName: 'WorkZoneValue',
+            minWidth: 120, maxWidth: 200, isResizable: true
+        },
+        {
+            key: 'Hazard', name: 'Hazard', fieldName: 'HazardValue',
             minWidth: 120, maxWidth: 200, isResizable: true
         },
         {

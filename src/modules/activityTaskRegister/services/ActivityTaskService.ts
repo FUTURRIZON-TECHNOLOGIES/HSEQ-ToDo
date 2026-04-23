@@ -29,11 +29,13 @@ export class ActivityTaskService extends BaseSPService {
                     "*",
                     "Id",
                     "Activity/Id", "Activity/Title",
+                    "BusinessProfile/Id", "BusinessProfile/Title",
                     "WorkZone/Id", "WorkZone/Title",
+                    "Hazard/Id", "Hazard/Title",
                     "ResponsiblePersons/Id", "ResponsiblePersons/Title",
                     "Author/Title", "Editor/Title"
                 )
-                .expand("Activity", "WorkZone", "ResponsiblePersons", "Author", "Editor")
+                .expand("Activity", "BusinessProfile", "WorkZone", "Hazard", "ResponsiblePersons", "Author", "Editor")
                 .orderBy(sortField, isAscending)
                 .top(pageSize);
 
@@ -91,6 +93,27 @@ export class ActivityTaskService extends BaseSPService {
         }
     }
 
+    public async addHazard(taskId: number, hazardLookupId: number, hazardTitle: string): Promise<IActivityTaskHazard> {
+        await this.init(this.HAZARD_LIST);
+        const result = await this._sp.web.lists.getByTitle(this._listTitle).items.add({
+            Title: hazardTitle,
+            ActivityTaskRegisterId: taskId,
+            HazardId: hazardLookupId
+        });
+        
+        return {
+            Id: result.data.Id,
+            Title: hazardTitle,
+            ActivityTaskRegisterId: taskId,
+            Hazard: { Id: hazardLookupId, Title: hazardTitle }
+        };
+    }
+
+    public async deleteHazard(id: number): Promise<void> {
+        await this.init(this.HAZARD_LIST);
+        await this._sp.web.lists.getByTitle(this._listTitle).items.getById(id).delete();
+    }
+
     public async addActivityTask(item: any): Promise<any> {
         await this.init(this.MAIN_LIST);
         return this._sp.web.lists.getByTitle(this._listTitle).items.add(item);
@@ -106,10 +129,12 @@ export class ActivityTaskService extends BaseSPService {
         await this._sp.web.lists.getByTitle(this._listTitle).items.getById(id).delete();
     }
 
-    public async getLookupOptions(listName: string): Promise<ISPLookup[]> {
+    public async getLookupOptions(listName: string, displayField: string = "Title"): Promise<ISPLookup[]> {
         try {
-            const items = await this._sp.web.lists.getByTitle(listName).items.select("Id", "Title").top(500)();
-            return items.map(i => ({ Id: i.Id, Title: i.Title }));
+            // Normalize field name for OData select (handle spaces)
+            const internalFieldName = displayField.replace(/\s/g, '_x0020_');
+            const items = await this._sp.web.lists.getByTitle(listName).items.select("Id", internalFieldName).top(500)();
+            return items.map(i => ({ Id: i.Id, Title: i[internalFieldName] || i.Title }));
         } catch (error) {
             console.error(`[ActivityTaskService] getLookupOptions failed for ${listName}`, error);
             return [];
@@ -130,8 +155,15 @@ export class ActivityTaskService extends BaseSPService {
         return {
             ...item,
             ActivityValue: item.Activity?.Title || "",
+            ActivityId: item.Activity?.Id || item.ActivityId,
+            BusinessProfileValue: item.BusinessProfile?.Title || "",
+            BusinessProfileId: item.BusinessProfile?.Id || item.BusinessProfileId,
             WorkZoneValue: item.WorkZone?.Title || "",
-            ResponsiblePersonsValue: item.ResponsiblePersons?.Title || ""
+            WorkZoneId: item.WorkZone?.Id || item.WorkZoneId,
+            HazardValue: item.Hazard?.Title || "",
+            HazardId: item.Hazard?.Id || item.HazardId,
+            ResponsiblePersonsValue: item.ResponsiblePersons?.Title || "",
+            ResponsiblePersonsId: item.ResponsiblePersons?.Id || item.ResponsiblePersonsId
         };
     }
 }
