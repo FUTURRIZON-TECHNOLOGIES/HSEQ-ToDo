@@ -1,0 +1,740 @@
+@import '../../webparts/swf/styles/variables';
+
+.todoForm {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-height: 100vh;
+    background: #f3f4f8;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    overflow: hidden;
+}
+
+.toolbar {
+    height: 52px;
+    background: linear-gradient(135deg, #0E4D92 0%, #1565C0 100%);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 10px;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(14,77,146,0.3);
+
+    .formTitle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 600;
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+
+        .formTitleIcon {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+    }
+
+    .toolbarActions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+    }
+
+    .toolbarDivider {
+        width: 1px;
+        height: 22px;
+        background: rgba(255,255,255,0.3);
+        margin: 0 4px;
+    }
+
+    .btnSave {
+        background: #ffffff !important;
+        color: #0E4D92 !important;
+        border: none !important;
+        font-weight: 700 !important;
+        font-size: 12px !important;
+        height: 32px;
+        border-radius: 4px !important;
+        padding: 0 14px !important;
+        transition: all 0.15s !important;
+
+        &:hover:not(:disabled) {
+            background: #e8f1ff !important;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        }
+
+        &:disabled { opacity: 0.6 !important; }
+    }
+
+    .btnAction {
+        background: rgba(255,255,255,0.15) !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(255,255,255,0.35) !important;
+        font-size: 12px !important;
+        height: 32px;
+        border-radius: 4px !important;
+        padding: 0 12px !important;
+        transition: all 0.15s !important;
+
+        :global(.ms-Button-icon) { color: #ffffff !important; }
+
+        &:hover:not(:disabled) {
+            background: rgba(255,255,255,0.25) !important;
+            border-color: rgba(255,255,255,0.6) !important;
+        }
+
+        &.btnClose {
+            background: rgba(255,80,80,0.25) !important;
+            border-color: rgba(255,80,80,0.5) !important;
+            &:hover { background: rgba(255,80,80,0.4) !important; }
+        }
+    }
+}
+
+.scrollContent {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 16px;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+
+    @media (max-width: 1024px) {
+        flex-direction: column;
+        padding: 12px;
+        align-items: stretch;
+    }
+}
+
+.leftColumn {
+    flex: 65;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+.rightColumn {
+    flex: 35;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 280px;
+}
+
+.section {
+    background: #ffffff;
+    border: 1px solid #dde1ea;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+
+    .sectionHeader {
+        display: flex;
+        align-items: center;
+        padding: 10px 16px;
+        background: #f7f8fc;
+        border-bottom: 1px solid #e8eaf0;
+        cursor: pointer;
+        user-select: none;
+        gap: 8px;
+
+        .sectionTitle {
+            flex: 1;
+            font-size: 11px;
+            font-weight: 700;
+            color: #2c3245;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .chevron {
+            font-size: 10px;
+            color: #888;
+        }
+    }
+
+    .sectionBody {
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+}
+
+// TIMELINE STYLES (MATCHING TODO WEBPART)
+.timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: relative;
+    padding-left: 12px;
+
+    &::before {
+        content: '';
+        position: absolute;
+        left: 7px;
+        top: 8px;
+        bottom: 8px;
+        width: 2px;
+        background: linear-gradient(180deg, #1565c0, #e0e4ea);
+    }
+}
+
+.timelineEvent {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding-bottom: 16px;
+    position: relative;
+
+    &:last-child { padding-bottom: 0; }
+}
+
+.timelineDot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #1565c0;
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 0 2px #1565c0;
+    flex-shrink: 0;
+    margin-left: -7px;
+    margin-top: 2px;
+    z-index: 1;
+
+    &.timelineDotLast {
+        background: #a0a8b8;
+        box-shadow: 0 0 0 2px #a0a8b8;
+    }
+}
+
+.timelineContent {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+
+    strong { font-size: 13px; color: #2c3245; }
+
+    .timelineDate {
+        font-size: 11px;
+        color: #1565c0;
+    }
+
+    .timelineDesc {
+        font-size: 12px;
+        color: #666;
+    }
+}
+
+.timelineEmpty {
+    font-size: 12px;
+    color: #aaa;
+    font-style: italic;
+    margin: 0;
+}
+
+// Fluent UI Overrides
+.todoForm {
+    :global(.ms-Label) {
+        font-weight: 600;
+        font-size: 12px;
+        color: #323130;
+    }
+
+    :global(.ms-TextField-fieldGroup),
+    :global(.ms-Dropdown-title) {
+        border-radius: 3px;
+        border-color: #c8cdd8;
+        &:hover { border-color: #0E4D92; }
+    }
+}
+
+.tabHeader {
+    background: #ffffff;
+    border-bottom: 1px solid #e1e1e1;
+    z-index: 10;
+}
+
+.attachmentsTab {
+    background: #fff;
+    border: 1px solid #dde1ea;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    width: 100%;
+    overflow: hidden;
+}
+
+.attachmentsToolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: #faf9f8;
+    border-bottom: 1px solid #edebe9;
+    flex-shrink: 0;
+
+    .documentsTitle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #323130;
+    }
+
+    .attachmentsActions {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+
+        :global(.ms-Button) {
+            height: 30px;
+            min-width: 0;
+            padding: 0 10px;
+            border-radius: 4px;
+            :global(.ms-Button-label) { font-size: 12px; }
+            :global(.ms-Button-icon) { font-size: 13px; }
+        }
+    }
+}
+
+.docsBadge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #0078d4;
+    color: #fff;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 6px;
+}
+
+.docsSelectionBar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px;
+    background: #deecf9;
+    border-bottom: 1px solid #c7e0f4;
+    font-size: 12px;
+    color: #323130;
+    flex-shrink: 0;
+}
+
+.docsClearBtn {
+    background: none;
+    border: none;
+    color: #0078d4;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0 2px;
+    text-decoration: underline;
+    &:hover { color: #005a9e; }
+}
+
+.docsTableWrapper {
+    overflow-x: auto;
+    flex: 1;
+    min-height: 200px;
+}
+
+.docsTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+
+    a {
+        color: #0078d4;
+        text-decoration: none;
+        &:hover { text-decoration: underline; }
+    }
+}
+
+.docsHeaderRow {
+    th {
+        padding: 10px 12px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 12px;
+        color: #323130;
+        background: #fff;
+        border-bottom: 2px solid #edebe9;
+        white-space: nowrap;
+        user-select: none;
+    }
+}
+
+.thWithIcon {
+    display: inline-flex;
+    align-items: center;
+}
+
+.docsFilterRow {
+    td {
+        padding: 4px 6px;
+        background: #faf9f8;
+        border-bottom: 1px solid #edebe9;
+    }
+}
+
+.docsFilterInput {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #d2d0ce;
+    border-radius: 3px;
+    padding: 5px 8px;
+    font-size: 12px;
+    font-family: 'Segoe UI', sans-serif;
+    outline: none;
+    background: #fff;
+    color: #323130;
+
+    &:focus {
+        border-color: #0078d4;
+        box-shadow: 0 0 0 1px #0078d4;
+    }
+
+    &::placeholder {
+        color: #c7c5c3;
+        font-style: italic;
+    }
+}
+
+.docsRow {
+    border-bottom: 1px solid #f3f2f1;
+    transition: background 0.1s;
+
+    &:hover { background: #f5f9ff; }
+
+    td {
+        padding: 8px 12px;
+        color: #323130;
+        font-size: 13px;
+        vertical-align: middle;
+    }
+}
+
+.docsRowSelected {
+    background: #deecf9;
+    border-bottom: 1px solid #c7e0f4;
+
+    &:hover { background: #c7e0f4; }
+
+    td {
+        padding: 8px 12px;
+        color: #323130;
+        font-size: 13px;
+        vertical-align: middle;
+    }
+}
+
+.docsColNum {
+    width: 40px;
+    text-align: center !important;
+    color: #a19f9d;
+    font-size: 12px !important;
+}
+
+.docsColCheck {
+    width: 40px;
+    text-align: center !important;
+
+    input[type='checkbox'] {
+        cursor: pointer;
+        width: 14px;
+        height: 14px;
+        accent-color: #0078d4;
+    }
+}
+
+.docsColAction {
+    width: 48px;
+    text-align: center !important;
+}
+
+.docsFileName {
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 12px !important;
+    color: #605e5c !important;
+}
+
+.docsDesc {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #605e5c !important;
+    font-size: 12px !important;
+}
+
+.docsDate {
+    white-space: nowrap;
+    color: #605e5c !important;
+    font-size: 12px !important;
+}
+
+.docsNoData {
+    text-align: center;
+    padding: 48px 20px;
+    color: #a19f9d;
+    font-size: 14px;
+}
+
+.docsStatusBar {
+    padding: 6px 16px;
+    font-size: 11px;
+    color: #a19f9d;
+    background: #faf9f8;
+    border-top: 1px solid #edebe9;
+    flex-shrink: 0;
+}
+
+.actionsTab {
+    width: 100%;
+}
+
+// ─── Modals (Upload + Edit) ────────────────────────────────────────────────
+
+.uploadModal {
+    width: 640px;
+    max-width: 95vw;
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+}
+
+.uploadHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    background: linear-gradient(135deg, #0E4D92 0%, #1565C0 100%);
+    flex-shrink: 0;
+    gap: 12px;
+
+    .uploadHeaderLeft {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .uploadHeaderTitle {
+        font-size: 15px;
+        font-weight: 700;
+        color: #fff;
+        white-space: nowrap;
+    }
+
+    .uploadHeaderSub {
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.78);
+        margin-top: 2px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 360px;
+    }
+}
+
+.uploadBody {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.uploadModalActions { display: none; } // legacy — replaced by modalFooter
+
+.dropZone {
+    border: 2px dashed #c2d4e8;
+    border-radius: 8px;
+    background: #f8fbff;
+    padding: 32px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    text-align: center;
+    transition: border-color 0.2s, background 0.2s;
+    cursor: default;
+
+    &:hover {
+        border-color: #0078d4;
+        background: #f0f6ff;
+    }
+}
+
+.dropZoneActive {
+    border-color: #0078d4 !important;
+    background: #e5f1fb !important;
+    box-shadow: inset 0 0 0 3px rgba(0, 120, 212, 0.12);
+}
+
+.dropZoneIcon {
+    font-size: 40px !important;
+    color: #0078d4;
+    margin-bottom: 4px;
+    transition: transform 0.2s;
+}
+
+.dropZoneTitle {
+    font-size: 15px;
+    font-weight: 600;
+    color: #323130;
+    margin: 0;
+}
+
+.dropZoneSub {
+    font-size: 13px;
+    color: #a19f9d;
+    margin: 0;
+}
+
+.dropZoneLabel { display: none; } // legacy
+
+.dropZoneHint {
+    font-size: 11px;
+    color: #a19f9d;
+    margin: 4px 0 0;
+    font-style: italic;
+}
+
+.fileQueue {
+    border: 1px solid #edebe9;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.fileQueueTitle {
+    display: flex;
+    align-items: center;
+    padding: 8px 14px;
+    background: #f8f7f6;
+    border-bottom: 1px solid #edebe9;
+    font-size: 12px;
+    font-weight: 600;
+    color: #323130;
+}
+
+.fileQueueItem {
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
+    gap: 10px;
+    border-bottom: 1px solid #f3f2f1;
+    transition: background 0.1s;
+
+    &:last-child { border-bottom: none; }
+    &:hover { background: #faf9f8; }
+}
+
+.fileQueueIcon {
+    font-size: 24px !important;
+    flex-shrink: 0;
+    color: #0078d4;
+}
+
+.fileQueueItemInfo {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.fileQueueItemName {
+    font-size: 13px;
+    font-weight: 500;
+    color: #323130;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fileQueueItemSize {
+    font-size: 11px;
+    color: #a19f9d;
+}
+
+.modalFooter {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 18px;
+    background: #faf9f8;
+    border-top: 1px solid #edebe9;
+    flex-shrink: 0;
+}
+
+// Edit modal specifics
+.editDocInfo {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    background: #f3f6fb;
+    border: 1px solid #dce6f3;
+    border-radius: 6px;
+    margin-bottom: 4px;
+}
+
+.editDocFileName {
+    font-size: 13px;
+    font-weight: 600;
+    color: #323130;
+    word-break: break-all;
+    line-height: 1.4;
+}
+
+.editDocMeta {
+    font-size: 11px;
+    color: #a19f9d;
+    margin-top: 3px;
+}
+
+.editDocLink {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 500;
+    color: #0078d4;
+    text-decoration: none;
+    flex-shrink: 0;
+    padding: 5px 10px;
+    border: 1px solid #0078d4;
+    border-radius: 4px;
+    transition: all 0.15s;
+
+    &:hover {
+        background: #0078d4;
+        color: #fff;
+        text-decoration: none;
+    }
+}
+
+.uploadTable { display: none; } // legacy — replaced by fileQueue
+
+

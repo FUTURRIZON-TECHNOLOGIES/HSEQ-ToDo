@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { IModuleInfo } from '../models/IModuleInfo';
 import ToDoModule from '../../modules/todo/ToDoModule';
+import TrainingInductionModule from '../../modules/trainingInduction';
 import WorksiteHacSwmsModule, {
     WORKSITE_HAC_SWMS_MODULE_GROUP,
     WORKSITE_HAC_SWMS_MODULE_ICON,
@@ -15,6 +16,13 @@ export const ModuleRegistry: IModuleInfo[] = [
         iconName: 'TaskManager',
         group: 'HSEQ',
         component: ToDoModule
+    },
+    {
+        id: 'TrainingInduction',
+        label: 'Training & Inductions',
+        iconName: 'Education',
+        group: 'HSEQ',
+        component: TrainingInductionModule
     },
     {
         id: WORKSITE_HAC_SWMS_MODULE_ID,
