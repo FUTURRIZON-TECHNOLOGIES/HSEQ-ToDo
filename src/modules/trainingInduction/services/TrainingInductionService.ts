@@ -94,6 +94,25 @@ export class TrainingInductionService {
         if (match) return fieldMap.get(match)!;
         return fallback;
     }
+
+    private normalizeFieldToken(value: string): string {
+        return (value || "")
+            .toLowerCase()
+            .replace(/_x[0-9a-f]{4}_/gi, "")
+            .replace(/[^a-z0-9]/g, "");
+    }
+
+    private findFieldByAliases(
+        fields: Array<{ Title?: string; InternalName?: string; TypeAsString?: string }>,
+        aliases: string[]
+    ): { Title?: string; InternalName?: string; TypeAsString?: string } | undefined {
+        const normalizedAliases = aliases.map(alias => this.normalizeFieldToken(alias));
+        return fields.find(field => {
+            const title = this.normalizeFieldToken(field.Title || "");
+            const internalName = this.normalizeFieldToken(field.InternalName || "");
+            return normalizedAliases.indexOf(title) > -1 || normalizedAliases.indexOf(internalName) > -1;
+        });
+    }
     // ─── Training & Inductions Methods ────────────────────────────────────────
 
     public async getTrainingInductionTotalCount(searchQuery?: string): Promise<number> {
@@ -118,9 +137,9 @@ export class TrainingInductionService {
             if (filterString) query = query.filter(filterString);
             const items = await query();
             return items.length;
-        } catch (e) { 
+        } catch (e) {
             console.error("[SPService] Count failed:", e);
-            return 0; 
+            return 0;
         }
     }
 
@@ -136,7 +155,7 @@ export class TrainingInductionService {
         const listTitle = this._listTitles.get(listName)!;
         const fieldTypeMap = this._fieldTypeMaps.get(listName)!;
         const fieldInternalNames = this._listFieldInternalNames.get(listName) || [];
-        
+
         // Comprehensive name resolution
         const names: any = {
             Title: this.getInternalName(listName, "Title", "Title"),
@@ -166,12 +185,12 @@ export class TrainingInductionService {
         Object.keys(names).forEach(key => {
             const internalName = (names as any)[key];
             if (!internalName || fieldInternalNames.indexOf(internalName) < 0) return;
-            
+
             const fieldType = fieldTypeMap.get(internalName) || "";
             if (fieldType === "User" || fieldType === "UserMulti" || fieldType === "Lookup" || fieldType === "LookupMulti") {
                 // Standard properties
                 selects.push(`${internalName}/Id`, `${internalName}/Title`);
-                
+
                 // Add known good sub-fields if we've discovered them
                 const displayField = (this._lookupDisplayFields.get(listName) || new Map()).get(internalName);
                 if (displayField && displayField !== "Title" && displayField !== "ID") {
@@ -236,7 +255,7 @@ export class TrainingInductionService {
                     const getLookup = (possibleNames: string[]) => {
                         const val = findVal(possibleNames);
                         if (!val) return undefined;
-                        
+
                         // Find any discovered display fields for these internal names
                         const suggestedFields: string[] = [];
                         possibleNames.forEach(n => {
@@ -256,10 +275,10 @@ export class TrainingInductionService {
                                 bestTitle = obj.Title || obj.Name || obj.EmployeeName || obj.Employee_x0020_Name || obj.FullName || obj.Full_x0020_Name || obj.BusinessProfile || obj.Business_x0020_Profile || obj.CompanyName || obj.Company_x0020_Name || obj.ProjectName || obj.Project_x0020_Name || obj.Company;
                             }
 
-                            return { 
-                                Id: obj.Id || 0, 
-                                Title: bestTitle || (typeof obj === 'string' ? obj : ''), 
-                                Name: obj.Name || bestTitle 
+                            return {
+                                Id: obj.Id || 0,
+                                Title: bestTitle || (typeof obj === 'string' ? obj : ''),
+                                Name: obj.Name || bestTitle
                             };
                         };
 
@@ -326,7 +345,7 @@ export class TrainingInductionService {
         const listTitle = this._listTitles.get(listName)!;
         const fieldTypeMap = this._fieldTypeMaps.get(listName)!;
         const fieldInternalNames = this._listFieldInternalNames.get(listName) || [];
-        
+
         const names: any = {
             Title: this.getInternalName(listName, "Title", "Title"),
             Type: this.getInternalName(listName, "Type", "Type"),
@@ -367,7 +386,7 @@ export class TrainingInductionService {
 
         try {
             let query = this._sp.web.lists.getByTitle(listTitle).items.select(...selects).expand(...expands);
-            
+
             if (searchQuery) {
                 const q = searchQuery.replace(/'/g, "''");
                 let filter = `(substringof('${q}', '${names.Title}') or substringof('${q}', '${names.Type}'))`;
@@ -442,12 +461,12 @@ export class TrainingInductionService {
             const isIdField = key.endsWith("Id");
             const baseKey = isIdField ? key.slice(0, -2) : key;
             const iNames = this._listFieldInternalNames.get(listName) || [];
-            let internalName = fieldMap.get(key) || 
-                               fieldMap.get(baseKey) || 
-                               fieldMap.get(baseKey + "s") ||
-                               (iNames.indexOf(key) > -1 ? key : "") ||
-                               (iNames.indexOf(baseKey) > -1 ? baseKey : "") ||
-                               this.getInternalName(listName, baseKey, "");
+            let internalName = fieldMap.get(key) ||
+                fieldMap.get(baseKey) ||
+                fieldMap.get(baseKey + "s") ||
+                (iNames.indexOf(key) > -1 ? key : "") ||
+                (iNames.indexOf(baseKey) > -1 ? baseKey : "") ||
+                this.getInternalName(listName, baseKey, "");
 
             // Robust fallback for the Type field
             if (!internalName && (baseKey === "Type" || baseKey === "Title" || baseKey === "SystemForm")) {
@@ -463,15 +482,15 @@ export class TrainingInductionService {
                 const saveKey = (isIdField && (fieldType === "Lookup" || fieldType === "User" || fieldType === "LookupMulti" || fieldType === "UserMulti"))
                     ? `${internalName}Id`
                     : internalName;
-                
+
                 let val = item[key];
-                
+
                 // Explicitly cast to string if SharePoint expects a string but we have a primitive (Number/Boolean)
                 const isTextField = fieldType === 'Text' || fieldType === 'Note' || fieldType === 'Choice';
                 if (isTextField && val !== null && val !== undefined && typeof val !== 'string') {
                     val = String(val);
                 }
-                
+
                 // Special handling for booleans (Yes/No fields in SharePoint)
                 if (typeof val === 'boolean') {
                     const isBoolField = fieldType === 'Boolean' || fieldType === 'Boolean (yes/no)';
@@ -479,7 +498,7 @@ export class TrainingInductionService {
                         val = val ? "Yes" : "No";
                     }
                 }
-                
+
                 // Ensure dates are strings for REST
                 if (val instanceof Date) {
                     val = val.toISOString();
@@ -506,10 +525,10 @@ export class TrainingInductionService {
         Object.keys(item).forEach(key => {
             const isIdField = key.endsWith("Id");
             const baseKey = isIdField ? key.slice(0, -2) : key;
-            let internalName = fieldMap.get(key) || 
-                               fieldMap.get(baseKey) || 
-                               fieldMap.get(baseKey + "s") ||
-                               this.getInternalName(listName, baseKey, "");
+            let internalName = fieldMap.get(key) ||
+                fieldMap.get(baseKey) ||
+                fieldMap.get(baseKey + "s") ||
+                this.getInternalName(listName, baseKey, "");
 
             // Robust fallback for the Type field
             if (!internalName && (baseKey === "Type" || baseKey === "Title" || baseKey === "SystemForm")) {
@@ -525,15 +544,15 @@ export class TrainingInductionService {
                 const saveKey = (isIdField && (fieldType === "Lookup" || fieldType === "User" || fieldType === "LookupMulti" || fieldType === "UserMulti"))
                     ? `${internalName}Id`
                     : internalName;
-                
+
                 let val = item[key];
-                
+
                 // Explicitly cast to string if SharePoint expects a string but we have a primitive (Number/Boolean)
                 const isTextField = fieldType === 'Text' || fieldType === 'Note' || fieldType === 'Choice';
                 if (isTextField && val !== null && val !== undefined && typeof val !== 'string') {
                     val = String(val);
                 }
-                
+
                 // Special handling for booleans (Yes/No fields in SharePoint)
                 if (typeof val === 'boolean') {
                     const isBoolField = fieldType === 'Boolean' || fieldType === 'Boolean (yes/no)';
@@ -541,7 +560,7 @@ export class TrainingInductionService {
                         val = val ? "Yes" : "No";
                     }
                 }
-                
+
                 if (val instanceof Date) {
                     val = val.toISOString();
                 }
@@ -569,32 +588,34 @@ export class TrainingInductionService {
             const listTitle = await this.findListTitle(listUrlName);
             const list = this._sp.web.lists.getByTitle(listTitle);
 
-            // Fetch fields to verify displayField
-            const fields = await list.fields.select("InternalName")();
-            let realField = "Title";
-            const fieldNames = fields.map(f => f.InternalName);
-            const check = (name: string): boolean => fieldNames.indexOf(name) > -1;
+            // Fetch fields to verify displayField with robust normalization
+            const fields = await list.fields.select("InternalName", "Title")();
+            const normField = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, '');
+            const targetNorm = normField(displayField);
 
-            if (check(displayField)) {
-                realField = displayField;
-            } else if (displayField.includes(" ") && check(displayField.replace(/\s+/g, '_x0020_'))) {
-                realField = displayField.replace(/\s+/g, '_x0020_');
-            } else if (check("EmployeeName")) {
-                realField = "EmployeeName";
-            } else if (check("Employee_x0020_Name")) {
-                realField = "Employee_x0020_Name";
-            } else if (check("Employee_Name")) {
-                realField = "Employee_Name";
-            } else if (check("BusinessProfile")) {
-                realField = "BusinessProfile";
-            } else if (check("FullName")) {
-                realField = "FullName";
-            } else if (check("Name")) {
-                realField = "Name";
+            let realField = "Title";
+            const match = fields.find(f => 
+                (f.InternalName || "").toLowerCase() === displayField.toLowerCase() ||
+                (f.Title || "").toLowerCase() === displayField.toLowerCase() ||
+                normField(f.InternalName) === targetNorm ||
+                normField(f.Title) === targetNorm
+            );
+
+            if (match) {
+                realField = match.InternalName;
+            } else {
+                // Fallback checks
+                const nameMatch = fields.find(f => normField(f.InternalName) === "name" || normField(f.Title) === "name");
+                if (nameMatch) realField = nameMatch.InternalName;
             }
 
+            console.log(`[SPService] Resolved lookup field for ${listUrlName}: ${realField} (requested: ${displayField})`);
+
             const items = await list.items.select("Id", realField, "Title").top(5000)();
-            return items.map(item => ({ Id: item.Id, Title: item[realField] || item.Title || `Record ${item.Id}` }));
+            return items.map(item => ({ 
+                Id: item.Id, 
+                Title: item[realField] || item.Title || `Record ${item.Id}` 
+            }));
         } catch (error) {
             console.error(`[SPService] getLookupOptions failed for ${listUrlName}:`, error);
             return [];
@@ -630,14 +651,14 @@ export class TrainingInductionService {
             // 1. Resolve internal names with heavy logging
             const fields = await list.fields.select("Title", "InternalName", "TypeAsString").top(5000)();
             console.log(`[SPService] Found ${fields.length} fields in total.`);
-            
-            // Normalize: strip whitespace for loose field-name matching
-            const normField = (s: string) => s.toLowerCase().replace(/\s+/g, '');
+
+            // Normalize field names aggressively so SharePoint encodings like _x0020_ still match.
+            const normField = (s: string) => this.normalizeFieldToken(s);
             const findField = (name: string) => {
                 const normName = normField(name);
                 const match = fields.find(f =>
-                    f.InternalName.toLowerCase() === name.toLowerCase() ||
-                    f.Title.toLowerCase() === name.toLowerCase() ||
+                    (f.InternalName || "").toLowerCase() === name.toLowerCase() ||
+                    (f.Title || "").toLowerCase() === name.toLowerCase() ||
                     normField(f.InternalName) === normName ||
                     normField(f.Title) === normName
                 );
@@ -646,52 +667,80 @@ export class TrainingInductionService {
                 return match;
             };
 
-            const recordIdField = fields.find(f =>
-                f.InternalName === "RecordID" ||
-                f.Title === "RecordID" ||
-                f.InternalName === "Record_x0020_ID" ||
-                normField(f.Title) === "recordid" ||
-                normField(f.InternalName) === "recordid"
-            );
-            const recordIdInternalName = recordIdField ? recordIdField.InternalName : "RecordID";
+            const recordIdField = this.findFieldByAliases(fields, ["RecordID", "Record ID", "RecordId"]);
+            const recordIdInternalName = recordIdField?.InternalName || "RecordID";
             const isRecordIdLookup = recordIdField?.TypeAsString?.includes("Lookup") ?? false;
             console.log(`[SPService] RecordID: "${recordIdInternalName}", isLookup: ${isRecordIdLookup}`);
 
-            const docTypeField = findField("DocumentType");
-            const docTypeInternalName = docTypeField ? docTypeField.InternalName : "DocumentType";
+            const docTypeField = findField("DocumentType") || findField("Document Type");
+            const docTypeInternalName = docTypeField?.InternalName || "DocumentType";
             const isDocTypeLookup = docTypeField?.TypeAsString?.includes("Lookup") ?? false;
 
-            // User confirmed: _ExtendedDescription is the internal name
-            const descriptionField = fields.find(f => f.InternalName === "_ExtendedDescription" || f.Title === "Description");
-            const descriptionInternalName = descriptionField ? descriptionField.InternalName : "_ExtendedDescription";
+            const findDescriptionField = () => {
+                // Priority: _ExtendedDescription (internal), then "Description"
+                return fields.find(f => f.InternalName === "_ExtendedDescription") || 
+                       fields.find(f => f.InternalName === "Description") ||
+                       fields.find(f => this.normalizeFieldToken(f.Title || "") === "description");
+            };
+            const descriptionField = findDescriptionField();
+            const descriptionInternalName = descriptionField?.InternalName || "";
 
             // 2. Build Select and Expand arrays dynamically based on resolved fields
-            const selectFields = ["Id", "FileLeafRef", "FileRef", "Title", "Created", "Author/Title"];
+            const selectFields = ["Id", "FileLeafRef", "FileRef", "Title", "Created", "FSObjType", "Author/Title"];
             const expandFields = ["Author"];
 
             // Only expand DocType if it is actually a Lookup field
             if (docTypeField && isDocTypeLookup) {
                 selectFields.push(`${docTypeInternalName}/Id`, `${docTypeInternalName}/Name`, `${docTypeInternalName}/Title`);
                 expandFields.push(docTypeInternalName);
-            }
-            if (descriptionField) {
-                selectFields.push(descriptionInternalName);
-            }
-            // Only expand RecordID if it is a Lookup; otherwise select the plain column
-            if (recordIdField) {
-                if (isRecordIdLookup) {
-                    selectFields.push(`${recordIdInternalName}/Id`);
-                    expandFields.push(recordIdInternalName);
-                } else {
-                    selectFields.push(recordIdInternalName);
-                }
+            } else if (docTypeField) {
+                selectFields.push(docTypeInternalName);
             }
 
-            // 3. Fetch items (OData filter syntax differs for Lookup vs plain Number)
+            const descriptionSelectKey = descriptionInternalName.startsWith('_')
+                ? 'OData_' + descriptionInternalName
+                : descriptionInternalName;
+            if (descriptionSelectKey) {
+                selectFields.push(descriptionSelectKey);
+            }
+
+            // For Lookup RecordID, select the hidden numeric field (RecordIDId) directly — no expand
+            // needed, and it avoids the $expand+$filter conflict that silently returns 0 in SP Online.
+            const recordIdSelectKey = isRecordIdLookup ? `${recordIdInternalName}Id` : recordIdInternalName;
+            if (recordIdField) {
+                selectFields.push(recordIdSelectKey);
+            }
+
+            // Ensure fallback arrays contain everything needed for metadata mapping
+            const fallbackSelectFields = [...selectFields];
+            const fallbackExpandFields = [...expandFields];
+
+            // For memory filter fallback, we might want to also expand RecordID to be safe
+            if (recordIdField && isRecordIdLookup) {
+                fallbackSelectFields.push(`${recordIdInternalName}/Id`, `${recordIdInternalName}/Title`);
+                fallbackExpandFields.push(recordIdInternalName);
+            }
+
+            const matchesCurrentRecord = (item: any): boolean => {
+                // Exclude folders
+                if (item.FSObjType !== undefined && item.FSObjType !== null && Number(item.FSObjType) !== 0) return false;
+
+                // Extract value from all possible SharePoint property names/structures
+                const val = item[recordIdSelectKey] ?? 
+                           item[recordIdInternalName] ?? 
+                           item[`${recordIdInternalName}Id`] ??
+                           (typeof item[recordIdInternalName] === 'object' ? item[recordIdInternalName]?.Id : undefined);
+
+                if (val === undefined || val === null) return false;
+
+                // Robust comparison: handle both primitive values and potential array/object wrappers
+                const compareVal = typeof val === 'object' ? (val.Id ?? val.value) : val;
+                return String(compareVal).trim() === String(recordId).trim();
+            };
+
+            // 3. Fetch items — Prioritize OData filter for performance
             let items: any[] = [];
-            const filterExpr = isRecordIdLookup
-                ? `${recordIdInternalName}Id eq ${recordId}`
-                : `${recordIdInternalName} eq ${recordId}`;
+            const filterExpr = `${recordIdSelectKey} eq ${recordId}`; 
             try {
                 items = await list.items
                     .select(...selectFields)
@@ -700,51 +749,101 @@ export class TrainingInductionService {
                     .orderBy("Created", false)();
 
                 console.log(`[SPService] OData filter "${filterExpr}" returned ${items.length} items.`);
+                items = items.filter(matchesCurrentRecord);
             } catch (odataErr) {
                 console.warn(`[SPService] OData filter failed:`, odataErr);
+                items = []; // Ensure we fall back
             }
 
-            // 4. Fallback: memory filter if OData returns zero or fails
+            // 4. Fallback: memory filter if OData returned 0 (failed silently or genuinely empty)
+            if (items.length === 0) {
+                if (recordIdField && isRecordIdLookup) {
+                    console.log(`[SPService] Falling back to CAML lookup-id filter for ${recordIdInternalName}=${recordId}...`);
+                    try {
+                        const viewFields = [
+                            "<FieldRef Name='ID' />",
+                            "<FieldRef Name='FileLeafRef' />",
+                            "<FieldRef Name='FileRef' />",
+                            "<FieldRef Name='Title' />",
+                            "<FieldRef Name='Created' />",
+                            "<FieldRef Name='FSObjType' />",
+                            "<FieldRef Name='Author' />",
+                            `<FieldRef Name='${recordIdInternalName}' LookupId='TRUE' />`
+                        ];
+
+                        if (docTypeField) {
+                            viewFields.push(`<FieldRef Name='${docTypeInternalName}' />`);
+                        }
+                        if (descriptionInternalName) {
+                            viewFields.push(`<FieldRef Name='${descriptionInternalName}' />`);
+                        }
+
+                        const camlItems = await list.getItemsByCAMLQuery(
+                            {
+                                ViewXml: `
+                                    <View Scope="RecursiveAll">
+                                        <Query>
+                                            <Where>
+                                                <And>
+                                                    <Eq>
+                                                        <FieldRef Name="FSObjType" />
+                                                        <Value Type="Integer">0</Value>
+                                                    </Eq>
+                                                    <Eq>
+                                                        <FieldRef Name="${recordIdInternalName}" LookupId="TRUE" />
+                                                        <Value Type="Lookup">${recordId}</Value>
+                                                    </Eq>
+                                                </And>
+                                            </Where>
+                                            <OrderBy>
+                                                <FieldRef Name="Created" Ascending="FALSE" />
+                                            </OrderBy>
+                                        </Query>
+                                        <ViewFields>
+                                            ${viewFields.join("")}
+                                        </ViewFields>
+                                        <RowLimit>5000</RowLimit>
+                                    </View>`
+                            },
+                            ...fallbackExpandFields.filter((f: string) => f !== 'Author')
+                        );
+
+                        console.log(`[SPService] CAML lookup-id filter returned ${camlItems.length} items.`);
+                        items = camlItems.filter(matchesCurrentRecord);
+                    } catch (camlErr) {
+                        console.warn("[SPService] CAML filter failed:", camlErr);
+                    }
+                }
+            }
+
             if (items.length === 0) {
                 console.log(`[SPService] Falling back to memory filter...`);
                 try {
                     const allItems = await list.items
-                        .select(...selectFields)
-                        .expand(...expandFields)
+                        .select(...fallbackSelectFields)
+                        .expand(...fallbackExpandFields)
                         .top(5000)();
 
                     console.log(`[SPService] Memory Filter: Fetched ${allItems.length} total items.`);
                     if (allItems.length > 0) {
-                        console.log(`[SPService] Sample Item [0] keys:`, Object.keys(allItems[0]));
-                        console.log(`[SPService] Sample Item [0] ${recordIdInternalName}:`, allItems[0][recordIdInternalName]);
+                        console.log("[SPService] Sample RecordID payloads:", allItems.slice(0, 5).map(sample => ({
+                            Id: sample.Id,
+                            File: sample.FileLeafRef,
+                            RecordIDId: sample[recordIdSelectKey],
+                            RecordIDLookupId: sample[recordIdInternalName]?.Id,
+                            RecordIDLookupTitle: sample[recordIdInternalName]?.Title,
+                            FSObjType: sample.FSObjType
+                        })));
                     }
 
-                    items = allItems.filter(item => {
-                        const val = item[recordIdInternalName];
-                        if (!val) return false;
-                        
-                        if (isRecordIdLookup) {
-                            // Handle both single lookup and multi-lookup
-                            const ids: number[] = [];
-                            if (Array.isArray(val)) {
-                                val.forEach(v => { if (v && v.Id) ids.push(Number(v.Id)); });
-                            } else if (typeof val === 'object') {
-                                if (val.Id) ids.push(Number(val.Id));
-                            } else {
-                                ids.push(Number(val));
-                            }
-                            return ids.indexOf(Number(recordId)) > -1;
-                        }
-                        
-                        return String(val) === String(recordId);
-                    });
-                    console.log(`[SPService] Memory filter narrowed to ${items.length} units.`);
+                    items = allItems.filter(matchesCurrentRecord);
+                    console.log(`[SPService] Memory filter narrowed to ${items.length} items.`);
                 } catch (memErr) {
                     console.error("[SPService] Memory filter fetch failed:", memErr);
-                    items = []; // Never show unrelated documents
+                    items = [];
                 }
             }
-            
+
             return items.map(item => {
                 const dt = item[docTypeInternalName];
                 return {
@@ -752,8 +851,8 @@ export class TrainingInductionService {
                     Title: item.Title || item.FileLeafRef,
                     FileName: item.FileLeafRef,
                     ServerRelativeUrl: item.FileRef,
-                    DocumentType: dt ? { Id: dt.Id, Title: dt.Name || dt.Title || "" } : { Id: 0, Title: "" },
-                    Description: item[descriptionInternalName] || "",
+                    DocumentType: dt ? { Id: dt.Id, Name: dt.Name || dt.Title || "" } : { Id: 0, Name: "" },
+                    Description: descriptionSelectKey ? (item[descriptionSelectKey] || "") : "",
                     Created: item.Created,
                     Author: { Title: item.Author?.Title || "Unknown" }
                 };
@@ -768,19 +867,27 @@ export class TrainingInductionService {
         try {
             const listTitle = await this.findListTitle(libraryName);
             const list = this._sp.web.lists.getByTitle(listTitle);
-            
-            const fields = await list.fields.select("Title", "InternalName").top(5000)();
-            const recordIdField = fields.find(f => f.Title === "RecordID" || f.InternalName === "RecordID");
-            const recordIdInternalName = recordIdField ? recordIdField.InternalName : "RecordID";
-            
+
+            const fields = await list.fields.select("Title", "InternalName", "TypeAsString").top(5000)();
+            const recordIdField = this.findFieldByAliases(fields, ["RecordID", "Record ID", "RecordId"]);
+
+            const recordIdInternalName = recordIdField?.InternalName || "RecordID";
+            const isRecordIdLookup = recordIdField?.TypeAsString?.includes("Lookup") ?? false;
+
             const result = await list.rootFolder.files.addUsingPath(file.name, file, { Overwrite: true });
             const item = await this._sp.web.getFileByServerRelativePath(result.ServerRelativeUrl).getItem();
-            
+
             const updatePayload: any = {
                 Title: file.name.split('.').slice(0, -1).join('.')
             };
-            updatePayload[`${recordIdInternalName}Id`] = recordId;
-            
+
+            if (isRecordIdLookup) {
+                updatePayload[`${recordIdInternalName}Id`] = recordId;
+            } else {
+                updatePayload[recordIdInternalName] = recordId;
+            }
+
+            console.log(`[SPService] Uploading document for RecordID ${recordId}. Field: ${recordIdInternalName}, isLookup: ${isRecordIdLookup}`);
             await item.update(updatePayload);
         } catch (e) {
             console.error(`[SPService] uploadLibraryDocument failed:`, e);
@@ -797,7 +904,7 @@ export class TrainingInductionService {
         try {
             const listTitle = await this.findListTitle(libraryName);
             const list = this._sp.web.lists.getByTitle(listTitle);
-            
+
             const fields = await list.fields.select("Title", "InternalName", "TypeAsString").top(5000)();
             const normF = (s: string) => s.toLowerCase().replace(/\s+/g, '');
             const findFieldMeta = (name: string) => {
@@ -814,13 +921,36 @@ export class TrainingInductionService {
             const docTypeInternalName = docTypeField ? docTypeField.InternalName : "DocumentType";
             const isDocTypeLookup = docTypeField?.TypeAsString?.includes("Lookup") ?? false;
 
-            const descField = fields.find(f => f.InternalName === "_ExtendedDescription" || f.Title === "Description");
-            const descriptionInternalName = descField ? descField.InternalName : "_ExtendedDescription";
+            const findDescriptionField = () => {
+                // User specified priority: _ExtendedDescription
+                const userChoice = fields.find(f => f.InternalName === "_ExtendedDescription");
+                if (userChoice) return userChoice;
+
+                const exact = fields.find(f => f.InternalName === "Description");
+                if (exact) return exact;
+
+                const titleMatch = fields.find(f => f.Title === "Description");
+                if (titleMatch) return titleMatch;
+
+                return fields.find(f => 
+                    this.normalizeFieldToken(f.InternalName || "") === "description" ||
+                    this.normalizeFieldToken(f.Title || "") === "description"
+                );
+            };
+
+            const descField = findDescriptionField();
+            const descriptionInternalName = descField?.InternalName;
 
             const updatePayload: any = {
-                Title: metadata.Title,
-                [descriptionInternalName]: metadata.Description
+                Title: metadata.Title
             };
+
+            if (descriptionInternalName) {
+                const restKey = descriptionInternalName.startsWith('_')
+                    ? 'OData_' + descriptionInternalName
+                    : descriptionInternalName;
+                updatePayload[restKey] = metadata.Description;
+            }
 
             // Only set lookup Id when the field is actually a Lookup type
             if (metadata.DocumentType > 0 && isDocTypeLookup) {
@@ -839,13 +969,13 @@ export class TrainingInductionService {
             const lists = await this._sp.web.lists.select("Title", "RootFolder/Name").expand("RootFolder")();
             const clean = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, '');
             const target = clean(urlName);
-            
+
             const match = lists.find(l =>
                 clean(l.Title) === target ||
                 clean(l.RootFolder.Name) === target ||
                 l.Title.toLowerCase() === urlName.toLowerCase()
             );
-            
+
             if (match) {
                 console.log(`[SPService] Resolved "${urlName}" to "${match.Title}"`);
                 return match.Title;

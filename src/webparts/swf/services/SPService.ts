@@ -345,7 +345,8 @@ export class SPService {
     public async getToDoItemsFiltered(
         searchQuery?: string,
         sortField: string = "Id",
-        isAscending: boolean = true
+        isAscending: boolean = true,
+        oDataFilter?: string
     ): Promise<IToDoItem[]> {
         await this.init();
 
@@ -417,13 +418,13 @@ export class SPService {
 
             if (searchQuery) {
                 // Hybrid Search for exports: fetch 1000 items and filter on client side
-                const query = this._sp.web.lists.getByTitle(this._listTitle).items
+                const queryBase = this._sp.web.lists.getByTitle(this._listTitle).items
                     .select(...selects)
                     .expand(...expands)
                     .top(1000)
                     .orderBy("Id", false);
 
-                const rawFetched = await query();
+                const rawFetched = await (oDataFilter ? queryBase.filter(oDataFilter) : queryBase)();
                 const mappedFetched = rawFetched.map(item => {
                     const getLookup = (n: string): { Id: number; Title: string; Name?: string } | undefined => {
                         const v = item[n];
@@ -458,12 +459,13 @@ export class SPService {
 
             } else {
                 // Batch-fetch for mass export
-                const itemIterator = this._sp.web.lists.getByTitle(this._listTitle).items
+                const batchBase = this._sp.web.lists.getByTitle(this._listTitle).items
                     .select(...selects)
                     .expand(...expands)
                     .top(2000)
                     .orderBy("Id", true);
-                
+
+                const itemIterator = oDataFilter ? batchBase.filter(oDataFilter) : batchBase;
                 for await (const items of itemIterator) {
                     rawItems.push(...items);
                     if (rawItems.length >= 10000) break;

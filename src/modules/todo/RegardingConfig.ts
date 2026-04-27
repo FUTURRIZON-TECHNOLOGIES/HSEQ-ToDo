@@ -16,6 +16,7 @@ export const REGARDING_DYNAMIC_FIELDS: { [key: string]: string } = {
     "Subcontractor": "Subcontractor",
     "Subcontractor Employee": "SubcontractorEmployee",
     "Submission": "Submission",
+    "Training & Inductions": "TrainingInduction",
     "Training & Induction": "TrainingInduction",
     "Vehicle & Plant": "VehiclePlant"
 };
@@ -37,7 +38,7 @@ export const getRegardingFieldLabel = (internalName: string): string => {
         case "Subcontractor":          return "Subcontractor";
         case "SubcontractorEmployee":  return "Subcontractor Employee";
         case "Submission":             return "Submission";
-        case "TrainingInduction":      return "Training & Induction";
+        case "TrainingInduction":      return "Training & Inductions";
         case "VehiclePlant":           return "Vehicle & Plant";
         default:                       return "Details";
     }

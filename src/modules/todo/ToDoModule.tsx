@@ -8,6 +8,11 @@ import ToDoForm from './ToDoForm';
 
 export interface IToDoModuleProps {
     context: WebPartContext;
+    defaultRegarding?: string;
+    defaultDynamicFieldValue?: string;
+    filterRecordId?: number;
+    filterTrainingInductionValue?: string;
+    isSubGrid?: boolean;
 }
 
 // ── Comprehensive Export Definitions ──────────────────────────────────────────
@@ -27,7 +32,14 @@ const stripHtml = (html: string | undefined): string => {
 
 const PAGE_SIZE = 100;
 
-const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
+const ToDoModule: React.FC<IToDoModuleProps> = ({
+    context,
+    defaultRegarding,
+    defaultDynamicFieldValue,
+    filterRecordId,
+    filterTrainingInductionValue,
+    isSubGrid
+}) => {
     const [items, setItems] = React.useState<IToDoItem[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [selectedItem, setSelectedItem] = React.useState<IToDoItem | undefined>(undefined);
@@ -45,21 +57,55 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
     const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
     const spService = React.useMemo(() => new SPService(context), [context]);
+    const mapGridItems = React.useCallback((data: IToDoItem[]): IToDoItem[] => data.map(item => ({
+        ...item,
+        StatusValue: item.Status?.Title || item.Status?.Name || item.StatusId?.toString() || item.Status?.toString() || "",
+        CategoryValue: item.Category?.Title || item.Category?.Name || item.CategoryId?.toString() || item.Category?.toString() || "",
+        ClassificationValue: item.Classification?.Title || item.Classification?.Name || item.ClassificationId?.toString() || item.Classification?.toString() || "",
+        PriorityValue: item.Priority?.Title || item.Priority?.Name || item.PriorityId?.toString() || item.Priority?.toString() || ""
+    })), []);
+    const applyTrainingInductionFilter = React.useCallback((data: IToDoItem[]): IToDoItem[] => {
+        if (!isSubGrid) return data;
+
+        const exactValue = (filterTrainingInductionValue || '').trim();
+        const idPrefix = filterRecordId ? `${filterRecordId} - ` : '';
+
+        return data.filter(item => {
+            const rawValue = String((item as any).TrainingInduction || '').trim();
+            if (!rawValue) return false;
+            if (exactValue) return rawValue === exactValue;
+            if (idPrefix) return rawValue.indexOf(idPrefix) === 0;
+            return true;
+        });
+    }, [filterTrainingInductionValue, filterRecordId, isSubGrid]);
 
     const fetchData = React.useCallback(async (page: number, search: string, sortField: string, isAsc: boolean) => {
         setLoading(true);
         try {
-            const [data, total] = await Promise.all([
-                spService.getToDoItemsPaged(page, PAGE_SIZE, search, sortField, isAsc),
-                spService.getToDoTotalCount(search)
-            ]);
-            const mappedItems = data.map(item => ({
-                ...item,
-                StatusValue: item.Status?.Title || item.Status?.Name || item.StatusId?.toString() || item.Status?.toString() || "",
-                CategoryValue: item.Category?.Title || item.Category?.Name || item.CategoryId?.toString() || item.Category?.toString() || "",
-                ClassificationValue: item.Classification?.Title || item.Classification?.Name || item.ClassificationId?.toString() || item.Classification?.toString() || "",
-                PriorityValue: item.Priority?.Title || item.Priority?.Name || item.PriorityId?.toString() || item.Priority?.toString() || ""
-            }));
+            let data: IToDoItem[] = [];
+            let total = 0;
+
+            if (isSubGrid) {
+                const subgridFilter = filterTrainingInductionValue
+                    ? `TrainingInduction eq '${filterTrainingInductionValue.replace(/'/g, "''")}'`
+                    : filterRecordId
+                    ? `startswith(TrainingInduction,'${filterRecordId} - ')`
+                    : undefined;
+                const filteredData = applyTrainingInductionFilter(
+                    await spService.getToDoItemsFiltered(search, sortField, isAsc, subgridFilter)
+                );
+                total = filteredData.length;
+                data = filteredData.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+            } else {
+                const result = await Promise.all([
+                    spService.getToDoItemsPaged(page, PAGE_SIZE, search, sortField, isAsc),
+                    spService.getToDoTotalCount(search)
+                ]);
+                data = result[0];
+                total = result[1];
+            }
+
+            const mappedItems = mapGridItems(data);
             setItems(mappedItems);
             setTotalCount(total);
         } catch (e) {
@@ -67,11 +113,11 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
         } finally {
             setLoading(false);
         }
-    }, [spService]);
+    }, [spService, isSubGrid, applyTrainingInductionFilter, mapGridItems]);
 
     React.useEffect(() => {
         fetchData(currentPage, searchQuery, sortConfig.field, sortConfig.isAscending);
-    }, [currentPage, searchQuery, sortConfig]);
+    }, [currentPage, searchQuery, sortConfig, fetchData]);
 
     // Keep a stable "refresh current page" reference for CRUD callbacks
     const fetchItems = React.useCallback(() => 
@@ -224,7 +270,9 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
     const handleExportExcel = async (pagedData: any[]) => {
         setLoading(true);
         try {
-            const allData = await spService.getToDoItemsFiltered(searchQuery, sortConfig.field, sortConfig.isAscending);
+            const allData = applyTrainingInductionFilter(
+                await spService.getToDoItemsFiltered(searchQuery, sortConfig.field, sortConfig.isAscending)
+            );
             const { ExportService } = await import('../../webparts/swf/services/ExportService');
             ExportService.exportToExcel(flattenItems(allData), 'ASP_Assist_Group_Tasks');
         } finally { setLoading(false); }
@@ -233,7 +281,9 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
     const handleExportCSV = async (pagedData: any[]) => {
         setLoading(true);
         try {
-            const allData = await spService.getToDoItemsFiltered(searchQuery, sortConfig.field, sortConfig.isAscending);
+            const allData = applyTrainingInductionFilter(
+                await spService.getToDoItemsFiltered(searchQuery, sortConfig.field, sortConfig.isAscending)
+            );
             const { ExportService } = await import('../../webparts/swf/services/ExportService');
             ExportService.exportToCSV(flattenItems(allData), 'ASP_Assist_Group_Tasks');
         } finally { setLoading(false); }
@@ -242,7 +292,9 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
     const handleExportPDF = async (pagedData: any[]) => {
         setLoading(true);
         try {
-            const allData = await spService.getToDoItemsFiltered(searchQuery, sortConfig.field, sortConfig.isAscending);
+            const allData = applyTrainingInductionFilter(
+                await spService.getToDoItemsFiltered(searchQuery, sortConfig.field, sortConfig.isAscending)
+            );
             const { ExportService } = await import('../../webparts/swf/services/ExportService');
             const flattened = flattenItems(allData);
             const headers = Object.keys(flattened[0] || {});
@@ -253,7 +305,9 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
     const handleExportZip = async (pagedData: any[]) => {
         setLoading(true);
         try {
-            const allData = await spService.getToDoItemsFiltered(searchQuery, sortConfig.field, sortConfig.isAscending);
+            const allData = applyTrainingInductionFilter(
+                await spService.getToDoItemsFiltered(searchQuery, sortConfig.field, sortConfig.isAscending)
+            );
             const { ExportService } = await import('../../webparts/swf/services/ExportService');
             const flattened = flattenItems(allData);
             const headers = Object.keys(flattened[0] || {});
@@ -305,21 +359,30 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
             }
             
             // Refresh counts and current page data
-            const newTotalCount = await spService.getToDoTotalCount(searchQuery);
+            const filteredAfterSave = isSubGrid
+                ? applyTrainingInductionFilter(
+                    await spService.getToDoItemsFiltered(searchQuery, sortConfig.field, sortConfig.isAscending)
+                )
+                : null;
+            const newTotalCount = filteredAfterSave
+                ? filteredAfterSave.length
+                : await spService.getToDoTotalCount(searchQuery);
             setTotalCount(newTotalCount);
 
             let targetPage = currentPage;
             const maxPage = Math.max(1, Math.ceil(newTotalCount / PAGE_SIZE));
             if (targetPage > maxPage) targetPage = maxPage;
 
-            const refreshedData = await spService.getToDoItemsPaged(
-                targetPage, 
-                PAGE_SIZE, 
-                searchQuery, 
-                sortConfig.field, 
-                sortConfig.isAscending
-            );
-            setItems(refreshedData);
+            const refreshedData = filteredAfterSave
+                ? filteredAfterSave.slice((targetPage - 1) * PAGE_SIZE, targetPage * PAGE_SIZE)
+                : await spService.getToDoItemsPaged(
+                    targetPage,
+                    PAGE_SIZE,
+                    searchQuery,
+                    sortConfig.field,
+                    sortConfig.isAscending
+                );
+            setItems(mapGridItems(refreshedData));
 
             // Handle panel state and selection based on the save mode
             if (mode === 'close') {
@@ -354,7 +417,7 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
         if (selectedItem?.Id) {
             try {
                 // Fetch fresh copy from SharePoint
-                const items = await spService.getToDoItems();
+                const items = applyTrainingInductionFilter(await spService.getToDoItems());
                 const fresh = items.find(i => i.Id === selectedItem.Id);
                 if (fresh) setSelectedItem(fresh);
             } catch (e) {
@@ -416,6 +479,8 @@ const ToDoModule: React.FC<IToDoModuleProps> = ({ context }) => {
                     item={selectedItem}
                     spService={spService}
                     context={context}
+                    defaultRegarding={defaultRegarding}
+                    defaultDynamicFieldValue={defaultDynamicFieldValue}
                     onSave={handleSave}
                     onRefresh={handleRefresh}
                     onClose={() => setIsPanelOpen(false)}

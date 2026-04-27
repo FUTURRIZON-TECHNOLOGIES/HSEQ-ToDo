@@ -37,7 +37,7 @@ export interface ITrainingInductionFormProps {
 export interface IDocument {
     Id: number;
     Title: string;
-    DocumentType: { Id: number, Title: string };
+    DocumentType: { Id: number, Name: string };
     FileName: string;
     Description: string;
     Created: string;
@@ -54,7 +54,7 @@ interface IUploadItem {
 
 const ToDoModuleAny = ToDoModule as React.FC<any>;
 
-const DOCUMENT_LIBRARY_NAME = "Training & Inductions Documents";
+const DOCUMENT_LIBRARY_NAME = "Training  Inductions Documents";
 
 const FILE_ICON_MAP: Record<string, string> = {
     pdf: 'PDF', doc: 'WordDocument', docx: 'WordDocument',
@@ -82,13 +82,13 @@ const TYPE_OPTIONS: IDropdownOption[] = [
     "Supply Workforce - New Subcontractor Induction Questionnaire (v2)",
     "Supply Workforce - Environmental Management Plan v1",
     "Supply Workforce - Quality Management Plan v1",
-    "Angle Grinder Safety", "Asbestos Awareness", "Ausgrid OHSP - Safety Observer training", "Behavioural Safety", 
-    "Bloodborne Pathogens – Managing the Risk", "Building and Office Evacuation", "Bullying in the Workplace", 
-    "Burns", "Chain of Responsibility", "Chemical Safety", "Competent observer essential energy", "Conflict of Interest", 
-    "Contractor Induction", "Correct Mask application and use", "CPR - Cardiopulmonary Resuscitation", 
-    "Drone Excluded category safety rules", "Drugs and Alcohol at Work", "Environmental Awareness", 
-    "FOR-2112-Intellectual Property and Confidentiality Agreement", "New Employee Induction Questionnaire (Version 1)", 
-    "Probity Plan - Sydney Metro", "Risk Register Training for Senior Managers", "Safe Manual Handling", 
+    "Angle Grinder Safety", "Asbestos Awareness", "Ausgrid OHSP - Safety Observer training", "Behavioural Safety",
+    "Bloodborne Pathogens – Managing the Risk", "Building and Office Evacuation", "Bullying in the Workplace",
+    "Burns", "Chain of Responsibility", "Chemical Safety", "Competent observer essential energy", "Conflict of Interest",
+    "Contractor Induction", "Correct Mask application and use", "CPR - Cardiopulmonary Resuscitation",
+    "Drone Excluded category safety rules", "Drugs and Alcohol at Work", "Environmental Awareness",
+    "FOR-2112-Intellectual Property and Confidentiality Agreement", "New Employee Induction Questionnaire (Version 1)",
+    "Probity Plan - Sydney Metro", "Risk Register Training for Senior Managers", "Safe Manual Handling",
     "SMR Induction", "The Safe Use of Ladders", "Ultegra Company Induction", "Work Related Stress", "Working from Home Fundamentals"
 ].map(opt => ({ key: opt, text: opt }));
 
@@ -130,14 +130,14 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
             setFormData(props.item);
         }
     }, [props.item]);
-    const [lookupOptions, setLookupOptions] = React.useState<{ 
-        participants: IDropdownOption[], 
+    const [lookupOptions, setLookupOptions] = React.useState<{
+        participants: IDropdownOption[],
         businessProfiles: IDropdownOption[],
         employees: IDropdownOption[],
         trainingTypes: IDropdownOption[],
         documentTypes: IDropdownOption[]
     }>({
-        participants: props.preLoadedLookups?.participants || [], 
+        participants: props.preLoadedLookups?.participants || [],
         businessProfiles: props.preLoadedLookups?.businessProfiles || [],
         employees: props.preLoadedLookups?.employees || [],
         trainingTypes: props.preLoadedLookups?.trainingTypes || [],
@@ -157,7 +157,7 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
             const lc = (s: string) => s.toLowerCase();
             return (
                 (!columnFilters.title || lc(doc.Title || '').includes(lc(columnFilters.title))) &&
-                (!columnFilters.docType || lc(doc.DocumentType?.Title || '').includes(lc(columnFilters.docType))) &&
+                (!columnFilters.docType || lc(doc.DocumentType?.Name || '').includes(lc(columnFilters.docType))) &&
                 (!columnFilters.fileName || lc(doc.FileName || '').includes(lc(columnFilters.fileName))) &&
                 (!columnFilters.description || lc(doc.Description || '').includes(lc(columnFilters.description))) &&
                 (!columnFilters.uploadedBy || lc(doc.Author?.Title || '').includes(lc(columnFilters.uploadedBy)))
@@ -204,12 +204,31 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
             };
             load();
         } else {
-             setLookupOptions({ ...props.preLoadedLookups, documentTypes: lookupOptions.documentTypes });
+            const pre = props.preLoadedLookups!;
+            setLookupOptions(prev => ({
+                participants: pre.participants,
+                businessProfiles: pre.businessProfiles,
+                employees: pre.employees,
+                trainingTypes: pre.trainingTypes,
+                documentTypes: prev.documentTypes
+            }));
+            props.spService.getLookupOptions('Document Types', 'Name')
+                .then(dtypes => setLookupOptions(prev => ({ ...prev, documentTypes: dtypes.map(d => ({ key: d.Id, text: d.Title })) })))
+                .catch(e => console.error('Document types load failed', e));
         }
     }, [props.preLoadedLookups]);
 
     const [isEditModalOpen, setIsEditModalOpen] = React.useState(false);
     const [editingDoc, setEditingDoc] = React.useState<IDocument | null>(null);
+    const actionTrainingInductionValue = React.useMemo(() => {
+        if (!props.item?.Id) return "";
+        const typeValue =
+            typeof formData.Type === 'object'
+                ? ((formData.Type as any)?.Title || (formData.Type as any)?.Name || "")
+                : (formData.Type || "");
+
+        return `${props.item.Id} - ${String(typeValue || "").trim()}`;
+    }, [props.item?.Id, formData.Type]);
 
     const fetchLibraryDocs = async (): Promise<void> => {
         if (props.item?.Id) {
@@ -220,7 +239,7 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
                 if (docs.length === 0) {
                     console.warn(`[InductionForm] WARNING: No documents found for ID ${props.item.Id}. Ensure 'RecordID' column in library has THIS value.`);
                 } else {
-                    console.table(docs.map(d => ({ ID: d.Id, Title: d.Title, FileName: d.FileName, Type: d.DocumentType?.Title })));
+                    console.table(docs.map(d => ({ ID: d.Id, Title: d.Title, FileName: d.FileName, Type: d.DocumentType?.Name })));
                 }
                 setLibraryDocs(docs);
             } catch (err) {
@@ -260,7 +279,7 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
             if (formData.Manager?.Id) payload.ManagerId = formData.Manager.Id;
             if (formData.Supervisors?.Id) payload.SupervisorsId = formData.Supervisors.Id;
             if (formData.Coordinator?.Id) payload.CoordinatorId = formData.Coordinator.Id;
-            
+
             await props.onSave(payload, mode);
         } catch (e) {
             setError(e.message || 'Error occurred while saving.');
@@ -270,108 +289,94 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
     };
 
     const handleDownloadCertificate = (): void => {
-        const doc = new jsPDF({
-            orientation: 'landscape',
-            unit: 'px',
-            format: [800, 500]
-        });
+        const id = props.item?.Id || 'N/A';
+        const name = (formData.Participant?.Title || 'Participant Name').trim();
 
-        const id = props.item?.Id || 'New';
-        const name = formData.Participant?.Title || 'Participant Name';
-        const type = formData.Title || 'Training Type';
-        const dateStr = formData.ScheduledDate ? new Date(formData.ScheduledDate).toLocaleDateString('en-GB', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric'
-        }) : 'Date';
+        // Prioritize Type field for the title as requested
+        const typeValue = typeof formData.Type === 'string' ? formData.Type : '';
+        const trainingTitle = (typeValue || formData.Title || `Training #${id}`).trim();
 
-        // COLOR PALETTE (From Image)
-        const GOLD = [197, 151, 46];
-        const DARK_BLUE = [38, 71, 114];
-        const BLACK = [26, 26, 26];
+        const rawDate = formData.CompletionDate || formData.ScheduledDate;
+        const dateStr = rawDate
+            ? new Date(rawDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+            : 'Date';
 
-        // --- TOP LEFT DECORATION ---
-        doc.setFillColor(DARK_BLUE[0], DARK_BLUE[1], DARK_BLUE[3] || 114); // Fallback for safety
-        doc.setFillColor(20, 40, 65); // Navy
-        doc.triangle(0, 0, 280, 0, 0, 200, 'F');
-        
-        doc.setDrawColor(GOLD[0], GOLD[1], GOLD[2]);
-        doc.setLineWidth(4);
-        doc.line(0, 140, 140, 0);
-        doc.line(0, 180, 180, 0);
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const certBgUrl: string = require('./certificateBackground.jpg');
 
-        // --- BOTTOM RIGHT DECORATION ---
-        doc.setFillColor(GOLD[0], GOLD[1], GOLD[2]);
-        doc.triangle(800, 280, 800, 500, 520, 500, 'F');
-        doc.setFillColor(20, 40, 65); // Dark Navy covering gold partially
-        doc.triangle(800, 400, 800, 500, 680, 500, 'F');
+        const img = new Image();
+        img.onload = (): void => {
+            const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+            const pageWidth = doc.internal.pageSize.getWidth();   // 841.89 pt
+            const pageHeight = doc.internal.pageSize.getHeight(); // 595.28 pt
+            const cx = pageWidth / 2;
 
-        // --- TOP RIGHT SEAL ---
-        const sealX = 720;
-        const sealY = 85;
-        
-        // Ribbon left
-        doc.setFillColor(20, 40, 65);
-        doc.triangle(sealX - 25, sealY + 20, sealX - 5, sealY + 80, sealX - 45, sealY + 80, 'F');
-        // Ribbon right
-        doc.triangle(sealX + 25, sealY + 20, sealX + 5, sealY + 80, sealX + 45, sealY + 80, 'F');
+            // Colors
+            const GOLD: [number, number, number] = [198, 156, 28];
+            const NAVY: [number, number, number] = [34, 76, 115];
+            const DARK_TEXT: [number, number, number] = [33, 37, 41];
 
-        // Main Circle
-        doc.setFillColor(20, 40, 65);
-        doc.circle(sealX, sealY, 48, 'F');
-        doc.setDrawColor(GOLD[0], GOLD[1], GOLD[2]);
-        doc.setLineWidth(6);
-        doc.circle(sealX, sealY, 44, 'D');
-        
-        // Star inside seal
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(55);
-        doc.text('★', sealX, sealY + 18, { align: 'center' });
+            // 1. Background Image (Borders/Graphics only)
+            doc.addImage(img, 'JPEG', 0, 0, pageWidth, pageHeight);
 
-        // --- MAIN CONTENT ---
-        
-        // Title: CERTIFICATE
-        doc.setTextColor(GOLD[0], GOLD[1], GOLD[2]);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(80);
-        doc.text('CERTIFICATE', 400, 125, { align: 'center' });
+            // 2. Header: "CERTIFICATE"
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(54);
+            doc.setTextColor(GOLD[0], GOLD[1], GOLD[2]);
+            doc.text('CERTIFICATE', cx, 140, { align: 'center' });
 
-        // of Completion
-        doc.setTextColor(DARK_BLUE[0], DARK_BLUE[1], DARK_BLUE[2]);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(34);
-        doc.text('of Completion', 400, 160, { align: 'center' });
+            // 3. Sub-Header: "of Completion"
+            doc.setFontSize(22);
+            doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
+            doc.text('of Completion', cx, 175, { align: 'center' });
 
-        // Award Statement
-        doc.setTextColor(BLACK[0], BLACK[1], BLACK[2]);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(26);
-        doc.text('This Certificate is awarded to:', 400, 245, { align: 'center' });
+            // 4. Awarded To Line
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(18);
+            doc.setTextColor(DARK_TEXT[0], DARK_TEXT[1], DARK_TEXT[2]);
+            doc.text('This Certificate is awarded to:', cx, 245, { align: 'center' });
 
-        // RECIPIENT NAME
-        doc.setTextColor(DARK_BLUE[0], DARK_BLUE[1], DARK_BLUE[2]);
-        doc.setFontSize(90);
-        doc.setFont('helvetica', 'bold');
-        doc.text(name, 400, 325, { align: 'center' });
+            // 5. Name (Dynamic)
+            let nameSize = 58;
+            if (name.length > 20) nameSize = 44;
+            if (name.length > 30) nameSize = 34;
 
-        // FOOTER DETAILS
-        doc.setTextColor(BLACK[0], BLACK[1], BLACK[2]);
-        doc.setFontSize(20);
-        doc.setFont('helvetica', 'normal');
-        
-        doc.text('for successfully completing the training of', 400, 385, { align: 'center' });
-        
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(22);
-        // Using splitTextToSize if type is too long
-        const typeText = doc.splitTextToSize(type, 600);
-        doc.text(typeText, 400, 410, { align: 'center' });
-        
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(20);
-        doc.text(`on ${dateStr}`, 400, 435 + (typeText.length > 1 ? 15 : 0), { align: 'center' });
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(nameSize);
+            doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
+            doc.text(name, cx, 315, { align: 'center' });
 
-        doc.save(`TrainingCertificate_${id}.pdf`);
+            // 6. Training Description
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(16);
+            doc.setTextColor(DARK_TEXT[0], DARK_TEXT[1], DARK_TEXT[2]);
+            doc.text("for successfully completing the training of", cx, 395, { align: 'center' });
+
+            // 7. Training Title (Dynamic, Bold)
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(20);
+            doc.setTextColor(0, 0, 0);
+            const titleLines = doc.splitTextToSize(trainingTitle, 620);
+            doc.text(titleLines, cx, 425, { align: 'center' });
+
+            const titleHeight = (titleLines.length) * 24;
+            const dateY = 425 + titleHeight;
+
+            // 8. Date (Dynamic)
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(16);
+            doc.setTextColor(DARK_TEXT[0], DARK_TEXT[1], DARK_TEXT[2]);
+            doc.text(`on ${dateStr}`, cx, dateY, { align: 'center' });
+
+            // 9. Certificate ID (Subtle)
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8);
+            doc.setTextColor(150, 150, 150);
+            doc.text(`Certificate No: ${id}`, pageWidth - 40, pageHeight - 25, { align: 'right' });
+
+            doc.save(`Certificate_${id}.pdf`);
+        };
+        img.src = certBgUrl;
     };
 
     const handleShowResult = (): void => {
@@ -386,13 +391,15 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
             const id = props.item?.Id || 'New';
 
             const name = formData.Participant?.Title || 'Participant Name';
-            const company = formData.BusinessProfile?.Title || 'Company Name';
-            const type = formData.Title || 'Induction Name';
-            const dateStr = formData.ScheduledDate ? new Date(formData.ScheduledDate).toLocaleDateString('en-GB', {
+            const company = formData.Company?.Title || formData.BusinessProfile?.Title || '';
+            const type = formData.Title || (typeof formData.Type === 'string' ? formData.Type : '') || 'Induction Name';
+            const rawDate = formData.CompletionDate || formData.ScheduledDate;
+            const dateStr = rawDate ? new Date(rawDate).toLocaleDateString('en-GB', {
+                weekday: 'long',
                 day: 'numeric',
                 month: 'long',
                 year: 'numeric'
-            }) : 'Date';
+            }) : '';
 
             // --- PAGE 1 ---
             
@@ -435,7 +442,7 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
                     ['Company', company],
                     ['Type', type],
                     ['Training/Induction For', formData.TrainingFor || 'General'],
-                    ['Project (optional)', ''],
+                    ['Project (optional)', formData.Project?.Title || ''],
                     ['Completion Date', dateStr],
                     ['Status', formData.Status || 'Complete'],
                     ['Participant\'s Signature', { content: '', styles: { minCellHeight: 40 } }]
@@ -601,7 +608,7 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
                 Description: editingDoc.Description
             });
             setIsEditModalOpen(false);
-            fetchLibraryDocs();
+            await fetchLibraryDocs();
         } catch (e: any) {
             setError("Failed to update document metadata: " + (e?.message || String(e)));
         } finally {
@@ -614,7 +621,7 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
         const data = libraryDocs.map((doc, idx) => ({
             '#': idx + 1,
             'Title': doc.Title,
-            'Document Type': doc.DocumentType.Title,
+            'Document Type': doc.DocumentType.Name,
             'File Name': doc.FileName,
             'Description': doc.Description,
             'Date Uploaded': new Date(doc.Created).toLocaleString(),
@@ -648,7 +655,7 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
     const deleteSelectedDocs = async (): Promise<void> => {
         if (selectedDocIds.length === 0) return;
         if (!confirm(`Are you sure you want to delete ${selectedDocIds.length} document(s)?`)) return;
-        
+
         setSaving(true);
         try {
             for (const id of selectedDocIds) {
@@ -714,18 +721,18 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
         const isExpanded = expandedSections[id];
         return (
             <div className={styles.section} style={{ marginBottom: '15px' }}>
-                <div 
-                    className={styles.sectionHeader} 
+                <div
+                    className={styles.sectionHeader}
                     onClick={() => toggleSection(id)}
                     style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                 >
-                    <Icon 
-                        iconName="ChevronRight" 
-                        className={styles.chevron} 
-                        style={{ 
+                    <Icon
+                        iconName="ChevronRight"
+                        className={styles.chevron}
+                        style={{
                             transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
                             transition: 'transform 0.3s ease'
-                        }} 
+                        }}
                     />
                     <span className={styles.sectionTitle}>{title}</span>
                 </div>
@@ -770,14 +777,14 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
                         text="Refresh"
                         disabled={saving}
                         onClick={() => {
-                             // Re-load initial data if needed or just trigger a state refresh
-                             window.location.reload(); 
+                            // Re-load initial data if needed or just trigger a state refresh
+                            window.location.reload();
                         }}
                     />
                     <DefaultButton
                         className={`${styles.btnAction} ${styles.btnClose}`}
                         iconProps={{ iconName: 'Cancel' }}
-                         text="Close"
+                        text="Close"
                         onClick={props.onClose}
                     />
                 </div>
@@ -804,58 +811,58 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
                     <React.Fragment>
                         <div className={styles.leftColumn}>
                             <Section title="GENERAL INFO" id="general">
-                                <ComboBox 
-                                    label="Type" 
-                                    options={lookupOptions.trainingTypes.length > 0 ? lookupOptions.trainingTypes : TYPE_OPTIONS} 
-                                    selectedKey={formData.Type} 
+                                <ComboBox
+                                    label="Type"
+                                    options={lookupOptions.trainingTypes.length > 0 ? lookupOptions.trainingTypes : TYPE_OPTIONS}
+                                    selectedKey={formData.Type}
                                     allowFreeform={false}
                                     autoComplete='on'
                                     onChange={(_, opt) => {
                                         handleFieldChange('Type', opt?.key);
                                         if (opt) handleFieldChange('Title', opt.text);
-                                    }} 
-                                    required 
+                                    }}
+                                    required
                                 />
-                                <TextField 
-                                    label="Training For" 
-                                    value={formData.TrainingFor || ''} 
-                                    onChange={(_, val) => handleFieldChange('TrainingFor', val)} 
+                                <TextField
+                                    label="Training For"
+                                    value={formData.TrainingFor || ''}
+                                    onChange={(_, val) => handleFieldChange('TrainingFor', val)}
                                 />
-                                <TextField 
-                                    label="Training Type" 
-                                    value={formData.TrainingType || ''} 
+                                <TextField
+                                    label="Training Type"
+                                    value={formData.TrainingType || ''}
                                     description="Calculated from Type"
-                                    readOnly 
+                                    readOnly
                                 />
-                                <ComboBox 
-                                    label="Participant" 
-                                    options={lookupOptions.participants} 
-                                    selectedKey={formData.Participant?.Id} 
+                                <ComboBox
+                                    label="Participant"
+                                    options={lookupOptions.participants}
+                                    selectedKey={formData.Participant?.Id}
                                     allowFreeform={false}
                                     autoComplete='on'
-                                    onChange={(_, opt) => handleFieldChange('Participant', { Id: opt?.key, Title: opt?.text })} 
-                                    required 
+                                    onChange={(_, opt) => handleFieldChange('Participant', { Id: opt?.key, Title: opt?.text })}
+                                    required
                                 />
                                 <DatePicker label="Schedule Date" value={formData.ScheduledDate ? new Date(formData.ScheduledDate) : undefined} onSelectDate={(date) => handleFieldChange('ScheduledDate', date?.toISOString())} />
-                                <ComboBox 
-                                    label="Status" 
-                                    options={STATUS_OPTIONS} 
-                                    selectedKey={formData.Status} 
+                                <ComboBox
+                                    label="Status"
+                                    options={STATUS_OPTIONS}
+                                    selectedKey={formData.Status}
                                     allowFreeform={false}
                                     autoComplete='on'
-                                    onChange={(_, opt) => handleFieldChange('Status', opt?.key)} 
+                                    onChange={(_, opt) => handleFieldChange('Status', opt?.key)}
                                 />
-                                
+
                                 <div style={{ marginTop: 20, display: 'flex', gap: 10, flexDirection: 'column' }}>
-                                    <PrimaryButton 
-                                        iconProps={{ iconName: 'Download' }} 
-                                        text="DOWNLOAD CERTIFICATE" 
+                                    <PrimaryButton
+                                        iconProps={{ iconName: 'Download' }}
+                                        text="DOWNLOAD CERTIFICATE"
                                         style={{ background: '#2B579A', border: 'none' }}
                                         onClick={handleDownloadCertificate}
                                     />
-                                    <DefaultButton 
-                                        iconProps={{ iconName: 'CirclePlus' }} 
-                                        text="CREATE COMPLIANCE RECORD" 
+                                    <DefaultButton
+                                        iconProps={{ iconName: 'CirclePlus' }}
+                                        text="CREATE COMPLIANCE RECORD"
                                         style={{ background: '#000', color: '#fff', border: 'none' }}
                                     />
                                 </div>
@@ -866,27 +873,27 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
                             <Section title="OUTCOME" id="outcome">
                                 <TextField label="Invitation Status" value={formData.InvitationStatus || ''} onChange={(_, val) => handleFieldChange('InvitationStatus', val)} />
                                 <div style={{ padding: '8px 0', borderBottom: '1px solid #eff0f2', marginBottom: 12 }}>
-                                    <DefaultButton 
-                                        iconProps={{ iconName: 'Mail' }} 
-                                        text="SEND INVITATION" 
-                                        disabled 
+                                    <DefaultButton
+                                        iconProps={{ iconName: 'Mail' }}
+                                        text="SEND INVITATION"
+                                        disabled
                                         styles={{ root: { border: 'none', background: '#e1dfdd', color: '#a19f9d' } }}
                                     />
                                 </div>
                                 <TextField label="Induction Link" value={formData.InductionLink?.Url || ''} onChange={(_, val) => handleFieldChange('InductionLink', { ...formData.InductionLink, Url: val, Description: val })} />
-                                <ComboBox 
-                                    label="Participation Status" 
-                                    options={PARTICIPANT_STATUS_OPTIONS} 
-                                    selectedKey={formData.ParticipantsStatus} 
+                                <ComboBox
+                                    label="Participation Status"
+                                    options={PARTICIPANT_STATUS_OPTIONS}
+                                    selectedKey={formData.ParticipantsStatus}
                                     allowFreeform={false}
                                     autoComplete='on'
-                                    onChange={(_, opt) => handleFieldChange('ParticipantsStatus', opt?.key)} 
+                                    onChange={(_, opt) => handleFieldChange('ParticipantsStatus', opt?.key)}
                                 />
-                                
+
                                 <div style={{ marginTop: 12 }}>
-                                    <PrimaryButton 
-                                        iconProps={{ iconName: 'Search' }} 
-                                        text="SHOW RESULT" 
+                                    <PrimaryButton
+                                        iconProps={{ iconName: 'Search' }}
+                                        text="SHOW RESULT"
                                         style={{ background: '#3b5d82', border: 'none' }}
                                         onClick={handleShowResult}
                                     />
@@ -895,37 +902,37 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
                             </Section>
 
                             <Section title="INTERNAL" id="internal">
-                                <ComboBox 
-                                    label="Business Profile" 
-                                    options={lookupOptions.businessProfiles} 
-                                    selectedKey={formData.BusinessProfile?.Id} 
+                                <ComboBox
+                                    label="Business Profile"
+                                    options={lookupOptions.businessProfiles}
+                                    selectedKey={formData.BusinessProfile?.Id}
                                     allowFreeform={false}
                                     autoComplete='on'
-                                    onChange={(_, opt) => handleFieldChange('BusinessProfile', { Id: opt?.key, Title: opt?.text })} 
+                                    onChange={(_, opt) => handleFieldChange('BusinessProfile', { Id: opt?.key, Title: opt?.text })}
                                 />
-                                <ComboBox 
-                                    label="Manager" 
-                                    options={lookupOptions.employees} 
-                                    selectedKey={formData.Manager?.Id} 
+                                <ComboBox
+                                    label="Manager"
+                                    options={lookupOptions.employees}
+                                    selectedKey={formData.Manager?.Id}
                                     allowFreeform={false}
                                     autoComplete='on'
-                                    onChange={(_, opt) => handleFieldChange('Manager', { Id: opt?.key, Title: opt?.text })} 
+                                    onChange={(_, opt) => handleFieldChange('Manager', { Id: opt?.key, Title: opt?.text })}
                                 />
-                                <ComboBox 
-                                    label="Supervisor" 
-                                    options={lookupOptions.employees} 
-                                    selectedKey={formData.Supervisors?.Id} 
+                                <ComboBox
+                                    label="Supervisor"
+                                    options={lookupOptions.employees}
+                                    selectedKey={formData.Supervisors?.Id}
                                     allowFreeform={false}
                                     autoComplete='on'
-                                    onChange={(_, opt) => handleFieldChange('Supervisors', { Id: opt?.key, Title: opt?.text })} 
+                                    onChange={(_, opt) => handleFieldChange('Supervisors', { Id: opt?.key, Title: opt?.text })}
                                 />
-                                <ComboBox 
-                                    label="Coordinator" 
-                                    options={lookupOptions.employees} 
-                                    selectedKey={formData.Coordinator?.Id} 
+                                <ComboBox
+                                    label="Coordinator"
+                                    options={lookupOptions.employees}
+                                    selectedKey={formData.Coordinator?.Id}
                                     allowFreeform={false}
                                     autoComplete='on'
-                                    onChange={(_, opt) => handleFieldChange('Coordinator', { Id: opt?.key, Title: opt?.text })} 
+                                    onChange={(_, opt) => handleFieldChange('Coordinator', { Id: opt?.key, Title: opt?.text })}
                                 />
                             </Section>
 
@@ -1029,7 +1036,7 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
                                                         {doc.Title || doc.FileName}
                                                     </a>
                                                 </td>
-                                                <td>{doc.DocumentType?.Title || '—'}</td>
+                                                <td>{doc.DocumentType?.Name || '—'}</td>
                                                 <td className={styles.docsFileName}>{doc.FileName}</td>
                                                 <td className={styles.docsDesc}>{doc.Description || '—'}</td>
                                                 <td className={styles.docsDate}>
@@ -1063,10 +1070,12 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
                 {activeTab === 'actions' && props.item?.Id && (
                     <div className={styles.actionsTab}>
                         <div style={{ padding: '0 10px' }}>
-                            <ToDoModuleAny 
-                                context={props.context} 
-                                filterRecordId={props.item.Id} 
-                                defaultRegarding="Training & Induction"
+                            <ToDoModuleAny
+                                context={props.context}
+                                filterRecordId={props.item.Id}
+                                filterTrainingInductionValue={actionTrainingInductionValue}
+                                defaultRegarding="Training & Inductions"
+                                defaultDynamicFieldValue={actionTrainingInductionValue}
                                 isSubGrid={true}
                             />
                         </div>
@@ -1218,7 +1227,7 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
                             selectedKey={editingDoc.DocumentType?.Id || null}
                             allowFreeform={false}
                             autoComplete="on"
-                            onChange={(_, opt) => setEditingDoc({ ...editingDoc, DocumentType: { Id: opt?.key as number, Title: opt?.text || '' } })}
+                            onChange={(_, opt) => setEditingDoc({ ...editingDoc, DocumentType: { Id: opt?.key as number, Name: opt?.text || '' } })}
                             styles={{ root: { marginTop: 12 } }}
                         />
                         <TextField

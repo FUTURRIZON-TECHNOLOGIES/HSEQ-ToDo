@@ -29,6 +29,8 @@ export interface IToDoFormProps {
     onSave: (payload: any, mode?: 'stay' | 'close' | 'new') => void;
     onRefresh: () => void;
     onClose: () => void;
+    defaultRegarding?: string;
+    defaultDynamicFieldValue?: string;
 }
 
 // ── Collapsible Section ───────────────────────────────────────────────────────
@@ -49,8 +51,17 @@ const Section: React.FC<{ title: string; icon: string; defaultOpen?: boolean; ch
 };
 
 // ── Helper: build initial formData from item (ensures IDs are populated) ─────
-const buildFormData = (item: IToDoItem | undefined): IToDoItem => {
-    if (!item) return { Title: '', CompletedPercent: 0 };
+const buildFormData = (
+    item: IToDoItem | undefined,
+    defaultRegarding?: string
+): IToDoItem => {
+    if (!item) {
+        return {
+            Title: '',
+            CompletedPercent: 0,
+            Regarding: defaultRegarding
+        };
+    }
     return {
         ...item,
         // Ensure dropdown selectedKey values are populated from lookup objects
@@ -62,10 +73,19 @@ const buildFormData = (item: IToDoItem | undefined): IToDoItem => {
 };
 
 // ── Main Form ─────────────────────────────────────────────────────────────────
-const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, onRefresh, onClose }) => {
+const ToDoForm: React.FC<IToDoFormProps> = ({
+    item,
+    spService,
+    context,
+    onSave,
+    onRefresh,
+    onClose,
+    defaultRegarding,
+    defaultDynamicFieldValue
+}) => {
     const isNew = !item?.Id;
 
-    const [formData, setFormData] = React.useState<IToDoItem>(buildFormData(item));
+    const [formData, setFormData] = React.useState<IToDoItem>(buildFormData(item, defaultRegarding));
     const [attachments, setAttachments] = React.useState<any[]>([]);
     const [pendingAttachments, setPendingAttachments] = React.useState<File[]>([]);
     const [options, setOptions] = React.useState<{
@@ -86,7 +106,7 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
     const regardingChoices: IDropdownOption[] = [
         'Audit & Inspection', 'Clients', 'Compliance Register', 'Employee', 'Incident',
         'Leads', 'Meetings', 'Project', 'Proposal', 'Subcontractor',
-        'Subcontractor Employee', 'Submission', 'Training & Induction', 'Vehicle & Plant'
+        'Subcontractor Employee', 'Submission', 'Training & Inductions', 'Vehicle & Plant'
     ].map(c => ({ key: c, text: c }));
 
     // ── Fetch attachments ─────────────────────────────────────────────────────
@@ -102,7 +122,7 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
         // ───────────────────────────────────────────────────────────────────────
         // CRITICAL: reset all form state to ensure a clean slate (especially for Save & New)
         // ───────────────────────────────────────────────────────────────────────
-        setFormData(buildFormData(item));
+        setFormData(buildFormData(item, defaultRegarding));
         setPendingAttachments([]);
         setAttachments([]);
         setError(undefined);
@@ -113,8 +133,9 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
             setDynamicFieldKey(fieldKey || "");
             setDynamicFieldValue(fieldKey ? (item as any)[fieldKey] || "" : "");
         } else {
-            setDynamicFieldKey("");
-            setDynamicFieldValue("");
+            const fieldKey = defaultRegarding ? REGARDING_DYNAMIC_FIELDS[defaultRegarding] : "";
+            setDynamicFieldKey(fieldKey || "");
+            setDynamicFieldValue(fieldKey === "TrainingInduction" ? (defaultDynamicFieldValue || "") : "");
         }
 
         const loadOptions = async () => {
@@ -141,7 +162,7 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
         };
         loadOptions();
         fetchAttachments();
-    }, [item?.Id]);
+    }, [item?.Id, defaultRegarding, defaultDynamicFieldValue]);
 
     // ── Save handler ──────────────────────────────────────────────────────────
     const handleSaveInternal = async (mode: 'stay' | 'close' | 'new') => {
@@ -360,7 +381,7 @@ const ToDoForm: React.FC<IToDoFormProps> = ({ item, spService, context, onSave, 
                                         // Set correct internal field key using mapping and reset previous value
                                         const fieldKey = REGARDING_DYNAMIC_FIELDS[newVal];
                                         setDynamicFieldKey(fieldKey || "");
-                                        setDynamicFieldValue("");
+                                        setDynamicFieldValue(fieldKey === "TrainingInduction" ? (defaultDynamicFieldValue || "") : "");
                                     }}
                                     placeholder="Select…"
                                 />
