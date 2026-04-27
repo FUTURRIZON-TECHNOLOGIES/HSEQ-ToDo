@@ -9,6 +9,8 @@ import WorksiteHacSwmsModule, {
     WORKSITE_HAC_SWMS_MODULE_LABEL
 } from '../../modules/worksiteHacSwms';
 
+import ComplianceRegisterModule from '../../modules/complianceRegister/ComplianceRegisterModule';
+
 export const ModuleRegistry: IModuleInfo[] = [
     {
         id: 'ToDo',
@@ -43,12 +45,7 @@ export const ModuleRegistry: IModuleInfo[] = [
         label: 'Compliance Register',
         iconName: 'ReadingMode',
         group: 'HSEQ',
-        component: () => (
-            <div style={{ padding: 20 }}>
-                <h2>Compliance Register</h2>
-                <p>This module is currently under development.</p>
-            </div>
-        )
+        component: (props) => <ComplianceRegisterModule context={props.context} />
     },
     {
         id: 'Projects',
