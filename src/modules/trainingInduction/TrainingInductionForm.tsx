@@ -21,6 +21,8 @@ import { TrainingInductionService } from './services/TrainingInductionService';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import ComplianceRegisterModule from '../complianceRegister/ComplianceRegisterModule';
+import { IComplianceItem } from '../complianceRegister/models/IComplianceItem';
 import styles from './TrainingInduction.module.scss';
 import ToDoModule from '../todo/ToDoModule';
 
@@ -220,6 +222,11 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
 
     const [isEditModalOpen, setIsEditModalOpen] = React.useState(false);
     const [editingDoc, setEditingDoc] = React.useState<IDocument | null>(null);
+    const [pdfPreviewData, setPdfPreviewData] = React.useState<{ url: string; filename: string } | null>(null);
+    const [docsLoading, setDocsLoading] = React.useState(false);
+    const [showComplianceModal, setShowComplianceModal] = React.useState(false);
+    const [complianceInitialItem, setComplianceInitialItem] = React.useState<Partial<IComplianceItem> | null>(null);
+    const [compliancePendingFiles, setCompliancePendingFiles] = React.useState<File[]>([]);
     const actionTrainingInductionValue = React.useMemo(() => {
         if (!props.item?.Id) return "";
         const typeValue =
@@ -232,6 +239,7 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
 
     const fetchLibraryDocs = async (): Promise<void> => {
         if (props.item?.Id) {
+            setDocsLoading(true);
             console.log(`[InductionForm] !!! FETCH INITIATED !!! Target ID: ${props.item.Id}, Library: ${DOCUMENT_LIBRARY_NAME}`);
             try {
                 const docs = await props.spService.getLibraryDocuments(DOCUMENT_LIBRARY_NAME, props.item.Id);
@@ -244,6 +252,8 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
                 setLibraryDocs(docs);
             } catch (err) {
                 console.error("[InductionForm] Critical error during fetchLibraryDocs:", err);
+            } finally {
+                setDocsLoading(false);
             }
         } else {
             console.warn("[InductionForm] Cannot fetch docs: props.item.Id is missing.");
@@ -286,6 +296,106 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
         } finally {
             setSaving(false);
         }
+    };
+
+    const generateCertificateAsFile = (): Promise<File | null> => {
+        return new Promise((resolve) => {
+            try {
+                const id = props.item?.Id || 'N/A';
+                const name = (formData.Participant?.Title || 'Participant Name').trim();
+                const typeValue = typeof formData.Type === 'string' ? formData.Type : '';
+                const trainingTitle = (typeValue || formData.Title || `Training #${id}`).trim();
+                const rawDate = formData.CompletionDate || formData.ScheduledDate;
+                const dateStr = rawDate
+                    ? new Date(rawDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+                    : 'Date';
+                // eslint-disable-next-line @typescript-eslint/no-var-requires
+                const certBgUrl: string = require('./certificateBackground.jpg');
+                const img = new Image();
+                img.onload = (): void => {
+                    try {
+                        const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+                        const pageWidth = doc.internal.pageSize.getWidth();
+                        const pageHeight = doc.internal.pageSize.getHeight();
+                        const cx = pageWidth / 2;
+                        const GOLD: [number, number, number] = [198, 156, 28];
+                        const NAVY: [number, number, number] = [34, 76, 115];
+                        const DARK_TEXT: [number, number, number] = [33, 37, 41];
+                        doc.addImage(img, 'JPEG', 0, 0, pageWidth, pageHeight);
+                        doc.setFont('helvetica', 'bold'); doc.setFontSize(54);
+                        doc.setTextColor(GOLD[0], GOLD[1], GOLD[2]);
+                        doc.text('CERTIFICATE', cx, 140, { align: 'center' });
+                        doc.setFontSize(22); doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
+                        doc.text('of Completion', cx, 175, { align: 'center' });
+                        doc.setFont('helvetica', 'normal'); doc.setFontSize(18);
+                        doc.setTextColor(DARK_TEXT[0], DARK_TEXT[1], DARK_TEXT[2]);
+                        doc.text('This Certificate is awarded to:', cx, 245, { align: 'center' });
+                        let nameSize = 58;
+                        if (name.length > 20) nameSize = 44;
+                        if (name.length > 30) nameSize = 34;
+                        doc.setFont('helvetica', 'bold'); doc.setFontSize(nameSize);
+                        doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
+                        doc.text(name, cx, 315, { align: 'center' });
+                        doc.setFont('helvetica', 'normal'); doc.setFontSize(16);
+                        doc.setTextColor(DARK_TEXT[0], DARK_TEXT[1], DARK_TEXT[2]);
+                        doc.text('for successfully completing the training of', cx, 395, { align: 'center' });
+                        doc.setFont('helvetica', 'bold'); doc.setFontSize(20);
+                        doc.setTextColor(0, 0, 0);
+                        const titleLines = doc.splitTextToSize(trainingTitle, 620);
+                        doc.text(titleLines, cx, 425, { align: 'center' });
+                        const dateY = 425 + titleLines.length * 24;
+                        doc.setFont('helvetica', 'normal'); doc.setFontSize(16);
+                        doc.setTextColor(DARK_TEXT[0], DARK_TEXT[1], DARK_TEXT[2]);
+                        doc.text(`on ${dateStr}`, cx, dateY, { align: 'center' });
+                        doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+                        doc.setTextColor(150, 150, 150);
+                        doc.text(`Certificate No: ${id}`, pageWidth - 40, pageHeight - 25, { align: 'right' });
+                        const blob = doc.output('blob');
+                        resolve(new File([blob], `Certificate_${id}.pdf`, { type: 'application/pdf' }));
+                    } catch { resolve(null); }
+                };
+                img.onerror = (): void => resolve(null);
+                img.src = certBgUrl;
+            } catch { resolve(null); }
+        });
+    };
+
+    const handleCreateComplianceRecord = async (): Promise<void> => {
+        const id = props.item?.Id;
+        const rawDate = formData.CompletionDate || formData.ScheduledDate;
+        const issueDate = rawDate ? new Date(rawDate).toISOString().split('T')[0] : null;
+        const typeValue = typeof formData.Type === 'string' ? formData.Type : (formData.Title || '');
+        const participant = formData.Participant?.Title || '';
+        const completionDateStr = rawDate
+            ? new Date(rawDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+            : '';
+
+        const notes = [
+            `Training/Induction #${id}`,
+            typeValue ? `Type: ${typeValue}` : '',
+            participant ? `Completed by: ${participant}` : '',
+            completionDateStr ? `Date: ${completionDateStr}` : '',
+            formData.Status ? `Status: ${formData.Status}` : ''
+        ].filter(Boolean).join(' | ');
+
+        const initialItem: Partial<IComplianceItem> = {
+            ComplianceFor: 'Worker',
+            MainBusinessProfileId: formData.BusinessProfile?.Id ?? null,
+            BusinessProfile: formData.BusinessProfile?.Title ?? '',
+            WorkerId: formData.Participant?.Id ?? null,
+            WorkerName: participant,
+            DocumentNumber: id ? String(id) : '',
+            IssueDate: issueDate,
+            Notes: notes,
+            IsBooking: false,
+            RenewalNotRequired: false,
+            HasAttachments: false
+        };
+
+        const certFile = await generateCertificateAsFile();
+        setComplianceInitialItem(initialItem);
+        setCompliancePendingFiles(certFile ? [certFile] : []);
+        setShowComplianceModal(true);
     };
 
     const handleDownloadCertificate = (): void => {
@@ -381,190 +491,262 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
 
     const handleShowResult = (): void => {
         console.log("[InductionForm] Generating Result PDF...");
-        try {
-            const doc = new jsPDF({
-                orientation: 'p',
-                unit: 'pt',
-                format: 'a4'
-            });
 
-            const id = props.item?.Id || 'New';
+        const id = props.item?.Id || 'New';
+        const name = formData.Participant?.Title || 'Participant Name';
+        const company = formData.Company?.Title || formData.BusinessProfile?.Title || '';
+        const type = formData.Title || (typeof formData.Type === 'string' ? formData.Type : '') || 'Induction Name';
+        const rawDate = formData.CompletionDate || formData.ScheduledDate;
+        const dateStr = rawDate ? new Date(rawDate).toLocaleDateString('en-GB', {
+            weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+        }) : '';
+        const trainingFor = formData.TrainingFor || 'General';
+        const project = formData.Project?.Title || '';
+        const status = formData.Status || '';
 
-            const name = formData.Participant?.Title || 'Participant Name';
-            const company = formData.Company?.Title || formData.BusinessProfile?.Title || '';
-            const type = formData.Title || (typeof formData.Type === 'string' ? formData.Type : '') || 'Induction Name';
-            const rawDate = formData.CompletionDate || formData.ScheduledDate;
-            const dateStr = rawDate ? new Date(rawDate).toLocaleDateString('en-GB', {
-                weekday: 'long',
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric'
-            }) : '';
+        const buildPDF = (): void => {
+            try {
+                const doc = new jsPDF({ orientation: 'p', unit: 'pt', format: 'a4' });
 
-            // --- PAGE 1 ---
-            
-            // Logo Placeholder
-            doc.setFillColor(20, 50, 90);
-            doc.rect(50, 40, 80, 45, 'F');
-            doc.setTextColor(255, 255, 255);
-            doc.setFontSize(10);
-            doc.setFont('helvetica', 'bold');
-            doc.text('SUPPLY', 60, 58);
-            doc.text('WORKFORCE', 54, 72);
-            
-            doc.setTextColor(38, 71, 114);
-            doc.setFontSize(26);
-            doc.setFont('helvetica', 'bold');
-            doc.text(`Training/Induction # ${id}`, 545, 65, { align: 'right' });
+                const pageWidth = doc.internal.pageSize.getWidth();
+                const pageHeight = doc.internal.pageSize.getHeight();
+                const marginLeft = 50;
+                const marginRight = 50;
+                const tableWidth = pageWidth - marginLeft - marginRight;
+                const NAVY: [number, number, number] = [38, 71, 114];
+                const AMBER: [number, number, number] = [185, 110, 25];
 
-            // Detail Header
-            const startY = 110;
-            doc.setFillColor(38, 71, 114);
-            doc.rect(50, startY, 495, 22, 'F');
-            doc.setTextColor(255, 255, 255);
-            doc.setFontSize(11);
-            doc.text('TRAINING/INDUCTION DETAIL', 55, startY + 15);
+                const printDate = new Date().toLocaleString('en-AU', {
+                    day: '2-digit', month: '2-digit', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit', hour12: true
+                }).replace(',', '');
 
-            // Detail Table
-            autoTable(doc, {
-                startY: startY + 22,
-                theme: 'grid',
-                headStyles: { fillColor: [245, 245, 245], textColor: [0,0,0], fontStyle: 'bold', lineWidth: 0.5 },
-                bodyStyles: { textColor: [0, 0, 0], lineWidth: 0.5, fontSize: 10 },
-                margin: { left: 50, right: 50 },
-                columnStyles: {
-                    0: { cellWidth: 160, fillColor: [250, 250, 250], fontStyle: 'bold' },
-                    1: { cellWidth: 'auto' }
-                },
-                body: [
-                    ['Record Number', id.toString()],
-                    ['Participant', name],
-                    ['Company', company],
-                    ['Type', type],
-                    ['Training/Induction For', formData.TrainingFor || 'General'],
-                    ['Project (optional)', formData.Project?.Title || ''],
-                    ['Completion Date', dateStr],
-                    ['Status', formData.Status || 'Complete'],
-                    ['Participant\'s Signature', { content: '', styles: { minCellHeight: 40 } }]
-                ]
-            });
+                // Draw Supply Workforce logo programmatically
+                const drawPageHeader = (): void => {
+                    const lx = marginLeft, ly = 22, lw = 110, lh = 62;
 
-            // Mock Signature logic (Robust check)
-            const lat = (doc as any).lastAutoTable;
-            const finalY = lat ? lat.finalY : startY + 250;
-            
-            doc.setDrawColor(0,0,0);
-            doc.setLineWidth(1);
-            doc.moveTo(320, finalY - 15);
-            (doc as any).bezierCurveTo(340, finalY - 35, 360, finalY + 5, 380, finalY - 20);
-            doc.stroke();
+                    // Logo background (dark navy)
+                    doc.setFillColor(27, 52, 88);
+                    doc.roundedRect(lx, ly, lw, lh, 4, 4, 'F');
 
-            // Result Title
-            doc.setFillColor(38, 71, 114);
-            doc.rect(50, finalY + 15, 495, 22, 'F');
-            doc.setTextColor(255, 255, 255);
-            doc.text('TRAINING/INDUCTION RESULT', 55, finalY + 30);
+                    // "SUPPLY" text
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(16);
+                    doc.setTextColor(108, 152, 192);
+                    doc.text('SUPPLY', lx + 7, ly + 24);
 
-            // Result Sections
-            autoTable(doc, {
-                startY: finalY + 37,
-                theme: 'grid',
-                headStyles: { fillColor: [240, 240, 240], textColor: [0,0,0], fontStyle: 'bold' },
-                bodyStyles: { fontSize: 9 },
-                margin: { left: 50, right: 50 },
-                columnStyles: { 0: { cellWidth: 340 }, 1: { cellWidth: 'auto' } },
-                head: [['Presentation', '']],
-                body: [['I have READ AND UNDERSTOOD the Supply Workforce New Subcontractor Induction Presentation.', 'Yes']]
-            });
+                    // "WORKFORCE" text
+                    doc.setFontSize(10.5);
+                    doc.text('WORKFORCE', lx + 5, ly + 38);
 
-            const nextY = (doc as any).lastAutoTable?.finalY || finalY + 100;
-            autoTable(doc, {
-                startY: nextY + 5,
-                theme: 'grid',
-                headStyles: { fillColor: [240, 240, 240], textColor: [0,0,0], fontStyle: 'bold' },
-                bodyStyles: { fontSize: 9 },
-                margin: { left: 50, right: 50 },
-                columnStyles: { 0: { cellWidth: 340 }, 1: { cellWidth: 'auto' } },
-                head: [['Questions', '']],
-                body: [
+                    // "EST 2020"
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(5.5);
+                    doc.text('EST 2020', lx + 38, ly + 56);
+
+                    // Power pylon / A-frame tower icon (right side of logo)
+                    const tx = lx + 88;           // center x
+                    const tTop = ly + 8;           // top y
+                    const tBot = ly + 56;          // base y
+                    const tMid = ly + 34;          // mid crossbar y
+                    const tArm = ly + 16;          // top arm y
+                    const outerHalf = 12;          // base half-width outer legs
+                    const innerHalf = 7;           // base half-width inner legs
+
+                    doc.setDrawColor(195, 165, 100);
+                    doc.setLineWidth(1.3);
+
+                    // Outer legs: spread from top-center to base corners
+                    doc.line(tx, tTop + 8, tx - outerHalf, tBot);
+                    doc.line(tx, tTop + 8, tx + outerHalf, tBot);
+
+                    // Top vertical pole
+                    doc.line(tx, tTop, tx, tTop + 8);
+
+                    // Top horizontal arm
+                    doc.line(tx - 9, tArm, tx + 9, tArm);
+
+                    // Insulator drops from each end and center of arm
+                    doc.line(tx - 9, tArm, tx - 9, tArm + 5);
+                    doc.line(tx,     tArm, tx,     tArm + 5);
+                    doc.line(tx + 9, tArm, tx + 9, tArm + 5);
+
+                    // Mid crossbar
+                    doc.line(tx - innerHalf, tMid, tx + innerHalf, tMid);
+
+                    // Inner A-legs: from mid crossbar ends to inner base
+                    doc.line(tx - innerHalf, tMid, tx - Math.round(outerHalf * 0.5), tBot);
+                    doc.line(tx + innerHalf, tMid, tx + Math.round(outerHalf * 0.5), tBot);
+
+                    // Title
+                    doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
+                    doc.setFontSize(22);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(`Training/Induction # ${id}`, pageWidth - marginRight, 62, { align: 'right' });
+                };
+
+                const addFooter = (page: number, total: number): void => {
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(7.5);
+                    doc.setTextColor(130, 130, 130);
+                    doc.text(
+                        `Training & Induction printout. Printed on: ${printDate}. Printed documents may not be current. Ensure currency prior to use.`,
+                        marginLeft, pageHeight - 18
+                    );
+                    const boxX = pageWidth - marginRight - 24;
+                    const boxY = pageHeight - 32;
+                    doc.setFillColor(NAVY[0], NAVY[1], NAVY[2]);
+                    doc.rect(boxX, boxY, 24, 18, 'F');
+                    doc.setTextColor(255, 255, 255);
+                    doc.setFontSize(8);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(`${page}/${total}`, boxX + 12, boxY + 12, { align: 'center' });
+                };
+
+                // --- PAGE 1 ---
+                drawPageHeader();
+
+                // TRAINING/INDUCTION DETAIL section header
+                const detailStartY = 110;
+                doc.setFillColor(NAVY[0], NAVY[1], NAVY[2]);
+                doc.rect(marginLeft, detailStartY, tableWidth, 22, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(11);
+                doc.setFont('helvetica', 'bold');
+                doc.text('TRAINING/INDUCTION DETAIL', marginLeft + 5, detailStartY + 15);
+
+                // Detail table
+                autoTable(doc, {
+                    startY: detailStartY + 22,
+                    theme: 'grid',
+                    styles: { fontSize: 10, cellPadding: 5 },
+                    bodyStyles: { textColor: [0, 0, 0], lineWidth: 0.5 },
+                    margin: { left: marginLeft, right: marginRight },
+                    columnStyles: {
+                        0: { cellWidth: 160, fillColor: [250, 250, 250], fontStyle: 'normal' },
+                        1: { cellWidth: tableWidth - 160 }
+                    },
+                    body: [
+                        ['Record Number', String(id)],
+                        ['Participant', name],
+                        ['Company', company],
+                        ['Type', type],
+                        ['Training/Induction For', trainingFor],
+                        ['Project (optional)', project],
+                        ['Completion Date', dateStr],
+                        ['Status', status],
+                        [{ content: "Participant's Signature", styles: { fontStyle: 'normal' } }, { content: '', styles: { minCellHeight: 40 } }]
+                    ]
+                });
+
+                const afterDetailY = (doc as any).lastAutoTable?.finalY || detailStartY + 250;
+
+                // Mock signature drawn inside the signature row
+                doc.setDrawColor(0, 0, 0);
+                doc.setLineWidth(0.8);
+                doc.lines([[30, -24, 68, 20, 98, -6]], 280, afterDetailY - 16, [1, 1], 'S', false);
+
+                // TRAINING/INDUCTION RESULT section header
+                const resultHeaderY = afterDetailY + 15;
+                doc.setFillColor(NAVY[0], NAVY[1], NAVY[2]);
+                doc.rect(marginLeft, resultHeaderY, tableWidth, 22, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(11);
+                doc.setFont('helvetica', 'bold');
+                doc.text('TRAINING/INDUCTION RESULT', marginLeft + 5, resultHeaderY + 15);
+
+                // All result content in one table — flows naturally to page 2
+                const subHeader = (label: string): any => ({
+                    content: label,
+                    colSpan: 2,
+                    styles: {
+                        fillColor: [255, 255, 255] as [number, number, number],
+                        textColor: AMBER,
+                        fontStyle: 'bold' as const,
+                        fontSize: 10.5,
+                        cellPadding: { top: 7, bottom: 5, left: 5, right: 5 }
+                    }
+                });
+
+                const resultBody: any[] = [
+                    [subHeader('Presentation')],
+                    ['I have READ AND UNDERSTOOD the Supply Workforce New Subcontractor Induction Presentation.', 'Yes'],
+                    [subHeader('Questions')],
                     ['Select four (4) of Supply Workforce Core Values:', 'Honesty, Teamwork, Safety First, Respect'],
                     ['What must be undertaken prior to starting any work?', 'Risk assessment undertaken'],
                     ['Who is responsible for completing a risk assessment?', 'All members of the work party'],
                     ['What are three (3) risk analysis tools we can use to determine if a task is safe to perform?', 'Risk matrix, Hierarchy of controls, SWMS'],
                     ['What is the correct order to effectively perform a risk assessment?', 'Assess -> Identify -> Control -> Monitor'],
-                    ['Identify five (5) typical hazards to be controlled in metering works:', 'Animals, Live electricity, Asbestos, Customers, Radiation'],
-                    ['What is the purpose of a Safe Work Method Statement (SWMS)?', 'To identify high risk tasks and associated minimum controls...'],
-                    ['Select six (6) attributes that promote good customer relations:', 'Respect, Cleanliness, Greeting, Notification, Groomed, Identification'],
-                    ['What do we do if we identify an unidentified risk?', 'Stop work, inform team, assess controls, update risk assessment'],
+                    ['Identify five (5) typical hazards that may need to be controlled when undertaking metering works:', 'Dangerous animals, Live electricity, Asbestos, Angry customers, Radioactive waves'],
+                    ['What is the purpose of a Safe Work Method Statement (SWMS)?', 'To identify the high risk tasks in the work activity and associated minimum controls that are required when undertaking those high risk tasks.'],
+                    ['Select six (6) the work attributes that promote good customer relations when undertaking metering work on a customers property:', 'Respect, Cleanliness (i.e. no rubbish left on site), Notification to customer of arrival and leaving, Greeting the customer and notifying them of your work activities, Being quiet and courteous during your work activity, Well groomed with identification'],
+                    ['What do we do if we identify an unidentified risk during a task?', 'Stop work, inform the team, assess controls, update the risk assessment if feasible, implement controls, and continue. If not, stop work and notify your supervisor.'],
                     ['Who is responsible for your safety at work? (Select 3)', 'All members of the work party, Supervisors, Me'],
                     ['How do I report a safety concern? (Select 2)', 'Report to my supervisor'],
-                    ['You will be subjected to random drug and alcohol tests.', 'True'],
-                    ['When must pre-start checks be done on vehicles?', 'Daily before commencing work'],
-                    ['What clothing is required near electricity network?', 'Arc rated clothing, Neck to wrists to ankles']
-                ]
-            });
-
-            const addFooter = (currDoc: jsPDF, page: number, total: number) => {
-                currDoc.setTextColor(150, 150, 150);
-                currDoc.setFontSize(8);
-                currDoc.text(`Training & Induction printout. Printed on: ${new Date().toLocaleString()}. Documents may not be current.`, 50, 815);
-                currDoc.setFillColor(20, 50, 80);
-                currDoc.rect(530, 805, 15, 15, 'F');
-                currDoc.setTextColor(255, 255, 255);
-                currDoc.text(`${page}/${total}`, 537.5, 815.5, { align: 'center' });
-            };
-            addFooter(doc, 1, 2);
-
-            // PAGE 2
-            doc.addPage();
-            addFooter(doc, 2, 2);
-            doc.setTextColor(38, 71, 114);
-            doc.setFontSize(26);
-            doc.text(`Training/Induction # ${id}`, 545, 65, { align: 'right' });
-
-            const page2StartY = 100;
-            autoTable(doc, {
-                startY: page2StartY,
-                theme: 'grid',
-                headStyles: { fillColor: [240, 240, 240], textColor: [0,0,0], fontStyle: 'bold' },
-                bodyStyles: { fontSize: 9 },
-                margin: { left: 50, right: 50 },
-                columnStyles: { 0: { cellWidth: 340 }, 1: { cellWidth: 'auto' } },
-                head: [['Questions (Continued)', '']],
-                body: [
+                    ['You will be subjected to random drug and alcohol tests whilst working for Supply Workforce.', 'True'],
+                    ['When must pre-start checks be done on vehicles and equipment?', 'Daily before commencing work'],
+                    ['What type of clothing is required when working on or near the electricity network? (Select 2)', 'Arc rated clothing, Neck to wrists to ankles'],
                     ['How do I obtain PPE or safety equipment?', 'Request from supervisor'],
-                    ['What action if a customer is aggressive/abusive?', 'Sympathise and refer to Supply Workforce supervisor'],
-                    ['What if you encounter a dog requiring access?', 'Do not enter unless safe and dog is secured by owner'],
-                    ['What if you find friable asbestos swarf?', 'Apply PPE as per SWMS and clean board prior to works'],
-                    ['Should employees be aware of social media activity?', 'True'],
-                    ['Briefed on behavioural expectations?', 'Yes'],
-                    ['Other type of business Bluecurrent has?', 'Gas'],
-                    ['Types of operations in Wellington:', 'Distribution network provider'],
-                    ['Role of AEMO?', 'To manage Australia\'s electricity and gas systems'],
-                    ['Doorstep Protocol - advice to customer:', 'Technician should give no advice on configuration/tariff'],
-                    ['If an incident occurs, notify who?', 'Emergency services, SWF Supervisor, Bluecurrent, Safework']
-                ]
-            });
+                    ['What action do I take if a customer is becoming aggressive/abusive? (Select 3)', 'Sympathise with them and refer them to Supply Workforce supervisor to discuss their concerns'],
+                    ['What do I do if I encounter a dog in a yard I require access to for work?', 'Do not enter unless safe to do so and the dog is safely secured by owner'],
+                    ['What action do I take if I find friable asbestos swarf in a switchboard I have opened?', 'Apply appropriate PPE as per SWMS requirements and thoroughly clean the board prior to commencement of metering works, apply relevant asbestos management procedures throughout the task.'],
+                    ['Employees and contractors of Supply Workforce should be aware that their social media activity, including posts, images, and comments, may reflect on the company.', 'True'],
+                    ['I confirm that I have been briefed on the organisations behavioural expectations including the workplace bullying and harassment policies.', 'Yes'],
+                    ['Aside from metering, what is another type of business that Bluecurrent has... (Select 1)', 'Gas'],
+                    ['Select two (2) types of operations that Bluecurrent Australia have in Wellington?', 'Distribution network provider'],
+                    ['What is the role of the Australian Energy Market Operator (AEMO)? (Select 1)', 'To manage Australia\'s electricity and gas systems and markets'],
+                    ['According to the Doorstep Protocol, what must you never give advice on to a customer? (Select 1)', 'The technician should give no advice to the customer regarding the metering configuration or tariff selection. The customer should be advised to contact their retailer.'],
+                    ['If an incident occurs, what should you do and who should you notify? (Select 2)', 'Emergency services (if required), SWF Supervisor, who will notify Bluecurrent and Safework (if required)'],
+                    [subHeader('Supply Workforce - Quality Management Plan v1')],
+                    ['I have READ AND UNDERSTOOD the Supply Workforce Quality Management Plan v1', 'Yes'],
+                    [subHeader('Supply Workforce - WHS Management Plan v1')],
+                    ['I have READ AND UNDERSTOOD the Supply Workforce WHS Management Plan v1', 'Yes'],
+                    [subHeader('Supply Workforce - Environmental Management Plan v1')],
+                    ['I have READ AND UNDERSTOOD the Supply Workforce Environmental Management Plan v1', 'Yes']
+                ];
 
-            const plansY = (doc as any).lastAutoTable?.finalY || page2StartY + 300;
-            autoTable(doc, {
-                startY: plansY + 10,
-                theme: 'grid',
-                margin: { left: 50, right: 50 },
-                bodyStyles: { fontSize: 9 },
-                columnStyles: { 0: { cellWidth: 340, fontStyle: 'bold' }, 1: { cellWidth: 'auto' } },
-                body: [
-                    ['Supply Workforce - Quality Management Plan v1', 'Yes'],
-                    ['Supply Workforce - WHS Management Plan v1', 'Yes'],
-                    ['Supply Workforce - Environmental Management Plan v1', 'Yes']
-                ]
-            });
+                autoTable(doc, {
+                    startY: resultHeaderY + 22,
+                    theme: 'grid',
+                    styles: { fontSize: 9, cellPadding: 4, textColor: [0, 0, 0] },
+                    bodyStyles: { lineWidth: 0.5 },
+                    margin: { top: 100, left: marginLeft, right: marginRight, bottom: 40 },
+                    columnStyles: {
+                        0: { cellWidth: 310 },
+                        1: { cellWidth: tableWidth - 310 }
+                    },
+                    body: resultBody,
+                    didDrawPage: (data: any) => {
+                        addFooter(data.pageNumber, 2);
+                        if (data.pageNumber > 1) {
+                            drawPageHeader();
+                        }
+                    }
+                });
 
-            doc.save(`InductionResult_${id}.pdf`);
-        } catch (error) {
-            console.error("PDF Generation failed:", error);
-            alert("Error generating PDF: " + (error.message || "Unknown error"));
-        }
+                const dataUri = doc.output('datauristring');
+                setPdfPreviewData({ url: dataUri, filename: `InductionResult_${id}.pdf` });
+            } catch (error) {
+                console.error("PDF Generation failed:", error);
+                alert("Error generating PDF: " + ((error as Error).message || "Unknown error"));
+            }
+        };
+
+        buildPDF();
+    };
+
+    const handleClosePdfPreview = (): void => {
+        setPdfPreviewData(null);
+    };
+
+    const handleSavePdf = (): void => {
+        if (!pdfPreviewData) return;
+        const a = document.createElement('a');
+        a.href = pdfPreviewData.url;
+        a.download = pdfPreviewData.filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>): void => {
@@ -864,6 +1046,7 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
                                         iconProps={{ iconName: 'CirclePlus' }}
                                         text="CREATE COMPLIANCE RECORD"
                                         style={{ background: '#000', color: '#fff', border: 'none' }}
+                                        onClick={() => { void handleCreateComplianceRecord(); }}
                                     />
                                 </div>
                             </Section>
@@ -1015,7 +1198,14 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filteredDocs.length === 0 ? (
+                                    {docsLoading ? (
+                                        <tr>
+                                            <td colSpan={9} className={styles.docsNoData}>
+                                                <Icon iconName="Sync" style={{ marginRight: 8, animation: 'spin 1s linear infinite' }} />
+                                                Loading documents…
+                                            </td>
+                                        </tr>
+                                    ) : filteredDocs.length === 0 ? (
                                         <tr>
                                             <td colSpan={9} className={styles.docsNoData}>
                                                 {Object.values(columnFilters).some(v => v)
@@ -1170,6 +1360,84 @@ const TrainingInductionForm: React.FC<ITrainingInductionFormProps> = (props) => 
                         />
                     </div>
                 </Modal>
+            )}
+
+            {showComplianceModal && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.6)', zIndex: 9999,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                    <div style={{
+                        background: '#f3f2f1', width: '95vw', height: '96vh',
+                        display: 'flex', flexDirection: 'column',
+                        borderRadius: 6, overflow: 'auto',
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
+                    }}>
+                        <ComplianceRegisterModule
+                            context={props.context}
+                            initialItem={complianceInitialItem || undefined}
+                            initialPendingFiles={compliancePendingFiles}
+                            onAfterClose={() => setShowComplianceModal(false)}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {pdfPreviewData && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.6)', zIndex: 9999,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                    <div style={{
+                        background: '#fff', width: '92vw', height: '96vh',
+                        display: 'flex', flexDirection: 'column',
+                        borderRadius: 6, overflow: 'hidden',
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
+                    }}>
+                        {/* Toolbar */}
+                        <div style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '0 16px', height: 52, background: '#1b3458', flexShrink: 0
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <Icon iconName="TextDocument" style={{ fontSize: 18, color: '#fff' }} />
+                                <span style={{ fontWeight: 600, fontSize: 14, color: '#fff' }}>
+                                    Training/Induction Result — Record #{props.item?.Id}
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <PrimaryButton
+                                    iconProps={{ iconName: 'SaveAs' }}
+                                    text="Save PDF"
+                                    styles={{
+                                        root: { background: '#fff', border: 'none', height: 34 },
+                                        label: { color: '#1b3458', fontWeight: 600 },
+                                        icon: { color: '#1b3458' }
+                                    }}
+                                    onClick={handleSavePdf}
+                                />
+                                <DefaultButton
+                                    iconProps={{ iconName: 'Cancel' }}
+                                    text="Close"
+                                    styles={{
+                                        root: { background: 'transparent', border: '1px solid rgba(255,255,255,0.6)', height: 34 },
+                                        label: { color: '#fff' },
+                                        icon: { color: '#fff' }
+                                    }}
+                                    onClick={handleClosePdfPreview}
+                                />
+                            </div>
+                        </div>
+                        {/* PDF embed — data URI avoids CSP blob-URL restrictions */}
+                        <iframe
+                            src={pdfPreviewData.url}
+                            style={{ flex: 1, border: 'none', width: '100%', display: 'block', minHeight: 0 }}
+                            title="PDF Preview"
+                        />
+                    </div>
+                </div>
             )}
 
             {isEditModalOpen && editingDoc && (

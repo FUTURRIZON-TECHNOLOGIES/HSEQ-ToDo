@@ -11,26 +11,29 @@ import { WebPartContext } from '@microsoft/sp-webpart-base';
 
 interface IComplianceRegisterModuleProps {
   context: WebPartContext;
+  initialItem?: Partial<IComplianceItem>;
+  initialPendingFiles?: File[];
+  onAfterClose?: () => void;
 }
 
-const ComplianceRegisterModule: React.FC<IComplianceRegisterModuleProps> = ({ context }) => {
+const ComplianceRegisterModule: React.FC<IComplianceRegisterModuleProps> = ({ context, initialItem, initialPendingFiles, onAfterClose }) => {
   const siteUrl = context.pageContext.web.absoluteUrl;
   const service = useMemo(() => new ComplianceService(siteUrl), [siteUrl]);
 
-  const [viewMode, setViewMode] = useState<'list' | 'form'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'form'>(initialItem ? 'form' : 'list');
   const [items, setItems] = useState<IComplianceItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(15);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [listLoading, setListLoading] = useState(true);
-  const [editingItem, setEditingItem] = useState<Partial<IComplianceItem> | null>(null);
+  const [editingItem, setEditingItem] = useState<Partial<IComplianceItem> | null>(initialItem || null);
   const [lookups, setLookups] = useState<ILookupSets>({
     complianceTypes: [], businesses: [], employees: [], projects: [], subcontractors: [], workers: []
   });
   const [lookupsLoaded, setLookupsLoaded] = useState(false);
   const [attachments, setAttachments] = useState<IAttachment[]>([]);
-  const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
+  const [pendingAttachments, setPendingAttachments] = useState<File[]>(initialPendingFiles || []);
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -59,6 +62,23 @@ const ComplianceRegisterModule: React.FC<IComplianceRegisterModuleProps> = ({ co
       const result = await service.getAllLookups();
       setLookups(result);
       setLookupsLoaded(true);
+
+      // When opened with a pre-fill, resolve business profile by name if the ID doesn't match
+      if (initialItem && !initialItem.Id) {
+        const bpId = initialItem.MainBusinessProfileId;
+        const bpName = (initialItem.BusinessProfile || '').toLowerCase().trim();
+        const idMatches = bpId != null && result.businesses.some(b => b.key === bpId);
+        if (!idMatches && bpName) {
+          const match = result.businesses.find(b =>
+            b.text.toLowerCase().trim() === bpName ||
+            b.text.toLowerCase().includes(bpName) ||
+            bpName.includes(b.text.toLowerCase().trim())
+          );
+          if (match) {
+            setEditingItem(prev => prev ? { ...prev, MainBusinessProfileId: match.key } : prev);
+          }
+        }
+      }
     } catch (err) {
       setErrorMessage(`Failed to load lookups: ${(err as Error).message}`);
     }
@@ -117,6 +137,7 @@ const ComplianceRegisterModule: React.FC<IComplianceRegisterModuleProps> = ({ co
   };
 
   const closeForm = (): void => {
+    if (onAfterClose) { onAfterClose(); return; }
     setViewMode('list');
     setEditingItem(null);
     setAttachments([]);
@@ -188,10 +209,14 @@ const ComplianceRegisterModule: React.FC<IComplianceRegisterModuleProps> = ({ co
         await flushPendingAttachments(newId);
       }
       setSaving(false);
-      setViewMode('list');
-      setEditingItem(null);
-      setAttachments([]);
-      setPendingAttachments([]);
+      if (onAfterClose) {
+        onAfterClose();
+      } else {
+        setViewMode('list');
+        setEditingItem(null);
+        setAttachments([]);
+        setPendingAttachments([]);
+      }
       await loadListData();
     } catch (err) {
       setSaving(false);
@@ -438,10 +463,13 @@ const ComplianceRegisterModule: React.FC<IComplianceRegisterModuleProps> = ({ co
     setCurrentPage(1);
   };
 
-  const mergedAttachments = [
+  const mergedAttachments = useMemo(() => [
     ...attachments,
-    ...(pendingAttachments || []).map(f => ({ FileName: f.name, ServerRelativeUrl: '' }))
-  ];
+    ...(pendingAttachments || []).map(f => ({
+      FileName: f.name,
+      ServerRelativeUrl: URL.createObjectURL(f)
+    }))
+  ], [attachments, pendingAttachments]);
 
   return (
     <div style={{ position: 'relative', width: '100%', minHeight: '400px' }}>

@@ -150,7 +150,12 @@ const AttachmentPanelInline: React.FC<IAttachmentPanelInlineProps> = ({
   const handleDownload = (): void => {
     if (!selected) return;
     const att = attachments.find(a => a.FileName === selected);
-    if (att) window.open(`${siteUrl}${att.ServerRelativeUrl}`, '_blank');
+    if (!att) return;
+    if (att.ServerRelativeUrl.startsWith('blob:')) {
+      window.open(att.ServerRelativeUrl, '_blank');
+    } else {
+      window.open(`${siteUrl}${att.ServerRelativeUrl}`, '_blank');
+    }
   };
 
   return (
